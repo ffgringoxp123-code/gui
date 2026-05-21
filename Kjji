@@ -1,8 +1,6 @@
+-- Kittylol Paid - Fixed Complete Version
 setfpscap(9999)
 repeat task.wait() until game:IsLoaded()
-
-local oldGui = game.CoreGui:FindFirstChild("KittylolGui")
-if oldGui then oldGui:Destroy() end
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -11,6 +9,10 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StatsService = game:GetService("Stats")
 local VIM = game:GetService("VirtualInputManager")
+
+-- Clean up old GUI
+local oldGui = game.CoreGui:FindFirstChild("KittylolGui")
+if oldGui then oldGui:Destroy() end
 
 local remote, f_raw = nil, nil
 local c = {nil, nil, nil, nil, nil, nil, nil}
@@ -29,7 +31,6 @@ local keyAutoParry = Enum.KeyCode.T
 local keyShowPeak = Enum.KeyCode.E
 local keySpam = Enum.KeyCode.Q
 local keyAutoSpamParry = Enum.KeyCode.Y
-local waitingForKey = false
 
 getgenv().AbilityESP = false
 
@@ -243,11 +244,19 @@ local hitSoundIds = {
     Bameware = "rbxassetid://3124331820",
 }
 
-game:GetService("ReplicatedStorage").Remotes.ParrySuccess.OnClientEvent:Connect(function()
-    if hit_Sound_Enabled then
-        hit_Sound:Play()
+-- Check if ParrySuccess remote exists before connecting
+local function setupHitSound()
+    local repo = game:GetService("ReplicatedStorage")
+    local parrySuccess = repo:FindFirstChild("Remotes") and repo.Remotes:FindFirstChild("ParrySuccess")
+    if parrySuccess then
+        parrySuccess.OnClientEvent:Connect(function()
+            if hit_Sound_Enabled then
+                hit_Sound:Play()
+            end
+        end)
     end
-end)
+end
+task.spawn(setupHitSound)
 
 -- ======================== AVATAR CHANGER ========================
 local __flags = {}
@@ -272,7 +281,7 @@ local function __set(__name, __char)
     __hum:ApplyDescriptionClientServer(__desc)
 end
 
--- ======================== GIF ANIMATION SYSTEM ========================
+-- ======================== GIF FRAMES ========================
 local gifFrames = {
     "rbxassetid://119074790388219",
     "rbxassetid://115672794096960",
@@ -284,43 +293,6 @@ local gifFrames = {
     "rbxassetid://93903492440603",
     "rbxassetid://137536008841598",
 }
-
--- SỬA: Hàm tạo nút GIF dùng RunService.Heartbeat thay vì coroutine.wrap
-local function createGifButton(parent, size, position, onClick)
-    local btn = Instance.new("ImageButton")
-    btn.Size = size
-    btn.Position = position
-    btn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
-    btn.BorderSizePixel = 0
-    btn.Image = gifFrames[1]
-    btn.Parent = parent
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
-    -- Dùng Heartbeat với bộ đếm thời gian thay vì coroutine
-    local frameIndex = 1
-    local lastFrameTime = 0
-    local gifConn = RunService.Heartbeat:Connect(function()
-        if not btn or not btn.Parent then
-            gifConn:Disconnect()
-            return
-        end
-        local now = tick()
-        if now - lastFrameTime >= 0.10 then
-            lastFrameTime = now
-            frameIndex = frameIndex + 1
-            if frameIndex > #gifFrames then frameIndex = 1 end
-            pcall(function()
-                btn.Image = gifFrames[frameIndex]
-            end)
-        end
-    end)
-
-    btn.MouseButton1Click:Connect(function()
-        if onClick then onClick() end
-    end)
-
-    return btn
-end
 
 -- Load color palette
 local function loadColors()
@@ -337,9 +309,16 @@ local function loadColors()
 end
 
 local colors = loadColors()
+local RedBorder = colors.Border
+local RedLight = colors.Light
+local RedDark = colors.Dark
+local RedPale = colors.Pale
+local WhiteBg = colors.WhiteBg
+local TextRed = colors.Text
+local TextSub = colors.Sub
+local BgTrans = colors.BgTrans
 
--- ======================== MAIN SCRIPT ========================
-
+-- ======================== HOOK REMOTE ========================
 local mt = getrawmetatable(game)
 local old = mt.__index
 setreadonly(mt, false)
@@ -360,15 +339,7 @@ mt.__index = newcclosure(function(self, key)
 end)
 setreadonly(mt, true)
 
-local RedBorder = colors.Border
-local RedLight = colors.Light
-local RedDark = colors.Dark
-local RedPale = colors.Pale
-local WhiteBg = colors.WhiteBg
-local TextRed = colors.Text
-local TextSub = colors.Sub
-local BgTrans = colors.BgTrans
-
+-- ======================== MAIN GUI ========================
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "KittylolGui"
 ScreenGui.ResetOnSpawn = false
@@ -431,7 +402,7 @@ task.spawn(function()
     notify("Kittylol paid", "remote hooked ✅")
 end)
 
--- Ability ESP
+-- ======================== ABILITY ESP ========================
 local function createBillboardGui(p)
     local character = p.Character
     while not character or not character.Parent do task.wait(); character = p.Character end
@@ -505,7 +476,7 @@ local function makeDraggable(frame, handle)
     end)
 end
 
--- ==================== ANTI LAG SYSTEM ====================
+-- ======================== ANTI LAG SYSTEM ========================
 local function applyAntiLag(state)
     if state then
         for _, O in ipairs(workspace:GetDescendants()) do
@@ -535,7 +506,7 @@ local function applyAntiLag(state)
     end
 end
 
--- ==================== FAKE WIN STREAK SYSTEM ====================
+-- ======================== FAKE WIN STREAK ========================
 local function formatNumber(num)
     local formatted = tostring(num)
     while true do
@@ -641,7 +612,7 @@ local function applyFake(num)
     Instance.new("UIAspectRatioConstraint", label)
 end
 
--- ==================== BALL TRAIL SYSTEM ====================
+-- ======================== BALL TRAIL ========================
 local PlasmaTrails = {
     Enabled = false,
     NumTrails = 10,
@@ -768,7 +739,7 @@ local function setupRainbowTrail()
     end
 end
 
--- ==================== BALL STATS ====================
+-- ======================== BALL STATS ========================
 local PFrame = Instance.new("Frame", ScreenGui)
 PFrame.Size = UDim2.new(0, 260, 0, 40)
 PFrame.Position = UDim2.new(0.5, -130, 0.02, 0)
@@ -813,7 +784,7 @@ PLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 makeDraggable(PFrame, PTitle)
 
--- ==================== MANUAL SPAM PANEL ====================
+-- ======================== MANUAL SPAM PANEL ========================
 local SpamPanel = Instance.new("Frame", ScreenGui)
 SpamPanel.Size = UDim2.new(0, 145, 0, 50)
 SpamPanel.Position = UDim2.new(0.5, -72, 1, -80)
@@ -854,7 +825,7 @@ end)
 
 makeDraggable(SpamPanel, SpamTitle)
 
--- ==================== IMMORTALITY SYSTEM ====================
+-- ======================== IMMORTALITY SYSTEM ========================
 local Immortality = {
     Enabled = false,
     DesyncRadius = 40,
@@ -913,20 +884,6 @@ RunService.Heartbeat:Connect(function()
         rootPart.AssemblyLinearVelocity = desyncCFramePositions[2]
     end
 end)
-
-local originalCFrameIndex
-originalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if Immortality.Enabled and not checkcaller() then
-        if key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            if self == LocalPlayer.Character.HumanoidRootPart then
-                return desyncCFramePositions[1] or CFrame.new()
-            elseif self == LocalPlayer.Character:FindFirstChild("Head") then
-                return desyncCFramePositions[1] and desyncCFramePositions[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
-            end
-        end
-    end
-    return originalCFrameIndex(self, key)
-end))
 
 -- Immortality GUI Panel
 local ImmPanel = Instance.new("Frame", ScreenGui)
@@ -1013,7 +970,7 @@ end)
 
 makeDraggable(ImmPanel, ImmTitle)
 
--- ==================== TOP BAR (MINIMIZED MODE) ====================
+-- ======================== TOP BAR (MINIMIZED MODE) ========================
 local BAR_HEIGHT = 30
 local BAR_WIDTH = 180
 local TopBar = Instance.new("Frame", ScreenGui)
@@ -1040,7 +997,7 @@ TopBarTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 makeDraggable(TopBar, TopBarTitle)
 
--- ==================== MAIN GUI (FULL PANEL) ====================
+-- ======================== MAIN GUI (FULL PANEL) ========================
 local GUI_WIDTH = 340
 local GUI_HEIGHT = 460
 local Frame = Instance.new("Frame", ScreenGui)
@@ -1082,43 +1039,46 @@ TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 makeDraggable(Frame, TitleBar)
 
--- SỬA HOÀN TOÀN: Tạo nút mở rộng trên TopBar SAU KHI Frame đã được tạo
--- Dùng ImageLabel thay vì ImageButton (vì một số executors chặn ImageButton click)
-local TopBarExpandBtn = Instance.new("ImageLabel")
-TopBarExpandBtn.Size = UDim2.new(0, 24, 0, 24)
-TopBarExpandBtn.Position = UDim2.new(1, -30, 0.5, -12)
+-- ======================== FIXED: GIF BUTTONS FOR TOPBAR & MINIMIZE ========================
+
+-- Helper function to animate a GIF on an ImageLabel
+local function animateGIF(imageLabel, frames, interval)
+    if not imageLabel or not imageLabel.Parent then return nil end
+    local idx = 1
+    local lastTime = 0
+    local conn = RunService.Heartbeat:Connect(function()
+        if not imageLabel or not imageLabel.Parent then
+            conn:Disconnect()
+            return
+        end
+        local now = tick()
+        if now - lastTime >= interval then
+            lastTime = now
+            idx = idx + 1
+            if idx > #frames then idx = 1 end
+            pcall(function() imageLabel.Image = frames[idx] end)
+        end
+    end)
+    return conn
+end
+
+-- 1. EXPAND BUTTON (on TopBar) - MỞ GUI
+local TopBarExpandBtn = Instance.new("ImageButton")
+TopBarExpandBtn.Size = UDim2.new(0, 28, 0, 28)
+TopBarExpandBtn.Position = UDim2.new(1, -34, 0.5, -14)
 TopBarExpandBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
 TopBarExpandBtn.BorderSizePixel = 0
 TopBarExpandBtn.Image = gifFrames[1]
 TopBarExpandBtn.Parent = TopBar
 TopBarExpandBtn.ZIndex = 2
-Instance.new("UICorner", TopBarExpandBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", TopBarExpandBtn).CornerRadius = UDim.new(0, 7)
 
--- GIF animation cho TopBarExpandBtn dùng Heartbeat
-local expFrameIndex = 1
-local expLastFrameTime = 0
-RunService.Heartbeat:Connect(function()
-    if not TopBarExpandBtn or not TopBarExpandBtn.Parent then return end
-    local now = tick()
-    if now - expLastFrameTime >= 0.10 then
-        expLastFrameTime = now
-        expFrameIndex = expFrameIndex + 1
-        if expFrameIndex > #gifFrames then expFrameIndex = 1 end
-        pcall(function()
-            TopBarExpandBtn.Image = gifFrames[expFrameIndex]
-        end)
-    end
-end)
+-- Animate GIF for expand button
+animateGIF(TopBarExpandBtn, gifFrames, 0.10)
 
--- Thêm một ImageButton đè lên trên để bắt sự kiện click
-local TopBarExpandClicker = Instance.new("ImageButton")
-TopBarExpandClicker.Size = UDim2.new(1, 0, 1, 0)
-TopBarExpandClicker.BackgroundTransparency = 1
-TopBarExpandClicker.ImageTransparency = 1
-TopBarExpandClicker.Parent = TopBarExpandBtn
-
--- Hàm mở GUI
-local function openGUI()
+-- FIX: Use MouseButton1Click on the ImageButton directly (this is the fix!)
+TopBarExpandBtn.MouseButton1Click:Connect(function()
+    -- Open GUI with animation
     Frame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
     Frame.Size = UDim2.new(0, 0, 0, 0)
     Frame.Visible = true
@@ -1127,10 +1087,36 @@ local function openGUI()
         Size = UDim2.new(0, GUI_WIDTH, 0, GUI_HEIGHT)
     }):Play()
     notify("Kittylol", "GUI opened")
-end
+end)
 
--- Hàm đóng GUI
-local function closeGUI()
+-- Also allow clicking the title bar text to open
+TopBarTitle.MouseButton1Click:Connect(function()
+    Frame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
+    Frame.Size = UDim2.new(0, 0, 0, 0)
+    Frame.Visible = true
+    TopBar.Visible = false
+    TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, GUI_WIDTH, 0, GUI_HEIGHT)
+    }):Play()
+    notify("Kittylol", "GUI opened")
+end)
+
+-- 2. MINIMIZE BUTTON (on TitleBar inside Frame) - ĐÓNG GUI
+local MinBtn = Instance.new("ImageButton")
+MinBtn.Size = UDim2.new(0, 34, 0, 34)
+MinBtn.Position = UDim2.new(1, -42, 0.5, -17)
+MinBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
+MinBtn.BorderSizePixel = 0
+MinBtn.Image = gifFrames[1]
+MinBtn.Parent = TitleBar
+MinBtn.ZIndex = 2
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 9)
+
+-- Animate GIF for minimize button
+animateGIF(MinBtn, gifFrames, 0.10)
+
+-- FIX: Proper close function
+MinBtn.MouseButton1Click:Connect(function()
     local tw = TweenService:Create(Frame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
         Size = UDim2.new(0, 0, 0, 0)
     })
@@ -1142,56 +1128,9 @@ local function closeGUI()
             Position = UDim2.new(0.5, -BAR_WIDTH/2, 0, 6)
         }):Play()
     end)
-end
-
--- Click vào nút mở rộng (cả ImageLabel và ImageButton đều bắt)
-TopBarExpandClicker.MouseButton1Click:Connect(openGUI)
--- Fallback: click vào chính ImageLabel
-TopBarExpandBtn.MouseButton1Click:Connect(openGUI)
--- Fallback 2: click vào TopBarTitle
-TopBarTitle.MouseButton1Click:Connect(openGUI)
-
--- Nút thu nhỏ trên TitleBar
-local MinBtn = Instance.new("ImageLabel")
-MinBtn.Size = UDim2.new(0, 34, 0, 34)
-MinBtn.Position = UDim2.new(1, -42, 0.5, -17)
-MinBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
-MinBtn.BorderSizePixel = 0
-MinBtn.Image = gifFrames[1]
-MinBtn.Parent = TitleBar
-MinBtn.ZIndex = 2
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 9)
-
--- GIF animation cho MinBtn
-local minFrameIndex = 1
-local minLastFrameTime = 0
-RunService.Heartbeat:Connect(function()
-    if not MinBtn or not MinBtn.Parent then return end
-    local now = tick()
-    if now - minLastFrameTime >= 0.10 then
-        minLastFrameTime = now
-        minFrameIndex = minFrameIndex + 1
-        if minFrameIndex > #gifFrames then minFrameIndex = 1 end
-        pcall(function()
-            MinBtn.Image = gifFrames[minFrameIndex]
-        end)
-    end
 end)
 
--- Clicker cho MinBtn
-local MinBtnClicker = Instance.new("ImageButton")
-MinBtnClicker.Size = UDim2.new(1, 0, 1, 0)
-MinBtnClicker.BackgroundTransparency = 1
-MinBtnClicker.ImageTransparency = 1
-MinBtnClicker.Parent = MinBtn
-
-MinBtnClicker.MouseButton1Click:Connect(closeGUI)
-MinBtn.MouseButton1Click:Connect(closeGUI)
-
-local savedFramePosition = Frame.Position
-local isOpen = false
-
--- Content với ScrollingFrame
+-- ======================== CONTENT (ScrollingFrame) ========================
 local Content = Instance.new("ScrollingFrame", Frame)
 Content.Size = UDim2.new(1, 0, 1, -48)
 Content.Position = UDim2.new(0, 0, 0, 48)
@@ -1285,7 +1224,7 @@ local function makeToggle(labelTxt, initState, onToggle)
     end)
 end
 
--- Hàm tạo ô nhập số
+-- Number input helper
 local function makeNumberInput(holder, label, default, minVal, maxVal, callback)
     local lbl = Instance.new("TextLabel", holder)
     lbl.Size = UDim2.new(0.6, 0, 0, 16)
@@ -1320,7 +1259,7 @@ local function makeNumberInput(holder, label, default, minVal, maxVal, callback)
     end)
 end
 
--- ==================== BUILD GUI CONTENT ====================
+-- ======================== BUILD GUI CONTENT ========================
 makDiv()
 makeSectionLabel("-- COMBAT --")
 
@@ -1342,7 +1281,7 @@ makeToggle("Auto Spam Parry", false, function(v)
     notify("Kittylol", "Auto Spam Parry: " .. (v and "ON" or "OFF"))
 end)
 
--- Manual Spam (Combat)
+-- Manual Spam
 makDiv()
 makeToggle("Manual Spam", false, function(v)
     ManualSpam = v
@@ -1355,7 +1294,7 @@ makeToggle("Manual Spam", false, function(v)
     notify("Kittylol", "Manual Spam: " .. (v and "ON" or "OFF"))
 end)
 
--- Immortality (chỉ bật/tắt hiển thị GUI ngoài)
+-- Immortality toggle
 makDiv()
 makeToggle("Immortality", false, function(v)
     ImmPanel.Visible = v
@@ -1389,7 +1328,11 @@ makeNumberInput(immSettingsHolder2, "Immortal Height", 50, 0, 200, function(v)
     ImmHeightBox.Text = tostring(v)
 end)
 
--- Triggerbot Toggle
+-- Triggerbot
+local TriggerbotEnabled = false
+local TriggerbotActive = false
+local InputConnection = nil
+
 makDiv()
 makeToggle("Triggerbot", false, function(v)
     TriggerbotEnabled = v
@@ -1628,7 +1571,7 @@ makeSectionLabel("-- PLAYER COSMETICS --")
 makeToggle("Cosmetics", false, function(v)
     CosmeticsActive = v
     
-    local pcall = pcall(function()
+    local pcall_success = pcall(function()
         local HeadlessActive = v
         local KorbloxActive = v
         
@@ -1919,7 +1862,7 @@ avatarTextBox.FocusLost:Connect(function(enterPressed)
     end
 end)
 
--- ==================== REMAINING SECTIONS ====================
+-- ======================== VISUALS ========================
 makDiv()
 makeSectionLabel("-- VISUALS --")
 
@@ -1939,6 +1882,7 @@ makeToggle("Ability ESP", false, function(v)
     notify("Kittylol", "Ability ESP: " .. (v and "ON" or "OFF"))
 end)
 
+-- ======================== ANTI LAG ========================
 makDiv()
 makeSectionLabel("-- ANTI LAG --")
 
@@ -1948,6 +1892,7 @@ makeToggle("Anti Lag", false, function(v)
     notify("Kittylol", "Anti Lag: " .. (v and "ON" or "OFF"))
 end)
 
+-- ======================== FAKE WIN STREAK ========================
 makDiv()
 makeSectionLabel("-- FAKE WIN STREAK --")
 
@@ -1973,6 +1918,7 @@ makeNumberInput(streakNumHolder, "Streak Value", 100, 1, 9999, function(v)
     end
 end)
 
+-- ======================== BALL TRAIL ========================
 makDiv()
 makeSectionLabel("-- BALL TRAIL --")
 
@@ -2130,7 +2076,7 @@ _G.rainbowTrailSpeed = 0.5
 -- Update CanvasSize
 Content.CanvasSize = UDim2.new(0, 0, 0, currentOrder * 38)
 
--- ==================== AUTO SPAM PARRY SYSTEM ====================
+-- ======================== AUTO SPAM PARRY SYSTEM ========================
 local autoSpamRunning = false
 local autoSpamConnection = nil
 local lastAutoSpamTime = 0
@@ -2138,7 +2084,7 @@ local autoSpamInterval = 1/875
 
 -- Keybinds
 UserInputService.InputBegan:Connect(function(input, gp)
-    if gp or waitingForKey then return end
+    if gp then return end
     if input.KeyCode == keyAutoParry then
         AutoParry = not AutoParry
         parried_balls = {}
@@ -2267,6 +2213,15 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- Auto Spam Parry loop
+task.spawn(function()
+    while task.wait(autoSpamInterval) do
+        if AutoSpamParry and remote and f_raw then
+            fireParry()
+        end
+    end
+end)
+
 RunService.Heartbeat:Connect(function()
     local currentOptions = getPlayerNames()
     table.sort(currentOptions)
@@ -2274,6 +2229,24 @@ RunService.Heartbeat:Connect(function()
     
     if currentString ~= lastOptionsString then
         lastOptionsString = currentString
+    end
+end)
+
+-- Emote dropdown selection (cycle through emotes)
+emoteDropdownBtn.MouseButton1Click:Connect(function()
+    local currentIdx = 0
+    for i, name in ipairs(emotes_data) do
+        if name == selected_animation then
+            currentIdx = i
+            break
+        end
+    end
+    local nextIdx = (currentIdx % #emotes_data) + 1
+    selected_animation = emotes_data[nextIdx]
+    emoteDropdownLbl.Text = "Emote: " .. selected_animation
+    
+    if emotesState then
+        animation_system.play(selected_animation)
     end
 end)
 
