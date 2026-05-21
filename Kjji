@@ -285,6 +285,7 @@ local gifFrames = {
     "rbxassetid://137536008841598",
 }
 
+-- SỬA: Hàm tạo nút GIF dùng RunService.Heartbeat thay vì coroutine.wrap
 local function createGifButton(parent, size, position, onClick)
     local btn = Instance.new("ImageButton")
     btn.Size = size
@@ -295,17 +296,24 @@ local function createGifButton(parent, size, position, onClick)
     btn.Parent = parent
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
+    -- Dùng Heartbeat với bộ đếm thời gian thay vì coroutine
     local frameIndex = 1
-    coroutine.wrap(function()
-        while btn and btn.Parent do
+    local lastFrameTime = 0
+    local gifConn = RunService.Heartbeat:Connect(function()
+        if not btn or not btn.Parent then
+            gifConn:Disconnect()
+            return
+        end
+        local now = tick()
+        if now - lastFrameTime >= 0.10 then
+            lastFrameTime = now
             frameIndex = frameIndex + 1
             if frameIndex > #gifFrames then frameIndex = 1 end
             pcall(function()
                 btn.Image = gifFrames[frameIndex]
             end)
-            task.wait(0.10) -- SỬA: 0.10 giây mỗi frame (= 10 FPS)
         end
-    end)()
+    end)
 
     btn.MouseButton1Click:Connect(function()
         if onClick then onClick() end
@@ -1030,37 +1038,19 @@ TopBarTitle.TextSize = 14
 TopBarTitle.TextColor3 = TextRed
 TopBarTitle.TextXAlignment = Enum.TextXAlignment.Left
 
--- Nút mở rộng dùng GIF animation
-local TopBarExpandBtn = createGifButton(TopBar, UDim2.new(0, 24, 0, 24), UDim2.new(1, -30, 0.5, -12), function()
-    isOpen = true
-    savedFramePosition = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
-    Frame.Position = savedFramePosition
-    -- SỬA: Hiện Frame ngay lập tức, không đợi
-    Frame.Visible = true
-    Frame.Size = UDim2.new(0, 0, 0, 0)
-    TopBar.Visible = false
-    TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, GUI_WIDTH, 0, GUI_HEIGHT)
-    }):Play()
-end)
-TopBarExpandBtn.ZIndex = 2
-TopBarExpandBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
-local expandCorner = Instance.new("UICorner", TopBarExpandBtn)
-expandCorner.CornerRadius = UDim.new(0, 6)
-
 makeDraggable(TopBar, TopBarTitle)
 
 -- ==================== MAIN GUI (FULL PANEL) ====================
 local GUI_WIDTH = 340
 local GUI_HEIGHT = 460
 local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 0, 0, 0) -- SỬA: Bắt đầu với kích thước 0 thay vì GUI_WIDTH/GUI_HEIGHT
+Frame.Size = UDim2.new(0, 0, 0, 0)
 Frame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
 Frame.BackgroundColor3 = Color3.fromRGB(40, 10, 20)
 Frame.BackgroundTransparency = 0.15
 Frame.BorderSizePixel = 0
 Frame.ClipsDescendants = true
-Frame.Visible = false -- SỬA: Ẩn lúc đầu, chỉ hiện khi click vào TopBarExpandBtn
+Frame.Visible = false
 Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 22)
 local MS = Instance.new("UIStroke", Frame)
 MS.Color = RedBorder
@@ -1090,31 +1080,113 @@ TitleLbl.TextSize = 18
 TitleLbl.TextColor3 = TextRed
 TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
--- Nút thu nhỏ dùng GIF animation
-local MinBtn = createGifButton(TitleBar, UDim2.new(0, 34, 0, 34), UDim2.new(1, -42, 0.5, -17), function()
-    isOpen = false
-    
-    local titleBarAbsX = Frame.AbsolutePosition.X + (TitleBar.AbsoluteSize.X * 0.12)
-    local titleBarAbsY = Frame.AbsolutePosition.Y + (TitleBar.AbsoluteSize.Y / 2)
-    
-    TopBar.Position = UDim2.new(0, titleBarAbsX - BAR_WIDTH/2, 0, titleBarAbsY - BAR_HEIGHT/2)
-    
-    TweenService:Create(Frame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-        Size = UDim2.new(0, 0, 0, 0)
-    }):Play()
-    task.wait(0.15)
-    Frame.Visible = false
-    TopBar.Visible = true
-    TweenService:Create(TopBar, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Position = UDim2.new(0.5, -BAR_WIDTH/2, 0, 6)
-    }):Play()
-end)
-MinBtn.ZIndex = 2
-MinBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
-local minCorner = Instance.new("UICorner", MinBtn)
-minCorner.CornerRadius = UDim.new(0, 9)
-
 makeDraggable(Frame, TitleBar)
+
+-- SỬA HOÀN TOÀN: Tạo nút mở rộng trên TopBar SAU KHI Frame đã được tạo
+-- Dùng ImageLabel thay vì ImageButton (vì một số executors chặn ImageButton click)
+local TopBarExpandBtn = Instance.new("ImageLabel")
+TopBarExpandBtn.Size = UDim2.new(0, 24, 0, 24)
+TopBarExpandBtn.Position = UDim2.new(1, -30, 0.5, -12)
+TopBarExpandBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
+TopBarExpandBtn.BorderSizePixel = 0
+TopBarExpandBtn.Image = gifFrames[1]
+TopBarExpandBtn.Parent = TopBar
+TopBarExpandBtn.ZIndex = 2
+Instance.new("UICorner", TopBarExpandBtn).CornerRadius = UDim.new(0, 6)
+
+-- GIF animation cho TopBarExpandBtn dùng Heartbeat
+local expFrameIndex = 1
+local expLastFrameTime = 0
+RunService.Heartbeat:Connect(function()
+    if not TopBarExpandBtn or not TopBarExpandBtn.Parent then return end
+    local now = tick()
+    if now - expLastFrameTime >= 0.10 then
+        expLastFrameTime = now
+        expFrameIndex = expFrameIndex + 1
+        if expFrameIndex > #gifFrames then expFrameIndex = 1 end
+        pcall(function()
+            TopBarExpandBtn.Image = gifFrames[expFrameIndex]
+        end)
+    end
+end)
+
+-- Thêm một ImageButton đè lên trên để bắt sự kiện click
+local TopBarExpandClicker = Instance.new("ImageButton")
+TopBarExpandClicker.Size = UDim2.new(1, 0, 1, 0)
+TopBarExpandClicker.BackgroundTransparency = 1
+TopBarExpandClicker.ImageTransparency = 1
+TopBarExpandClicker.Parent = TopBarExpandBtn
+
+-- Hàm mở GUI
+local function openGUI()
+    Frame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
+    Frame.Size = UDim2.new(0, 0, 0, 0)
+    Frame.Visible = true
+    TopBar.Visible = false
+    TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, GUI_WIDTH, 0, GUI_HEIGHT)
+    }):Play()
+    notify("Kittylol", "GUI opened")
+end
+
+-- Hàm đóng GUI
+local function closeGUI()
+    local tw = TweenService:Create(Frame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 0)
+    })
+    tw:Play()
+    tw.Completed:Connect(function()
+        Frame.Visible = false
+        TopBar.Visible = true
+        TweenService:Create(TopBar, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0.5, -BAR_WIDTH/2, 0, 6)
+        }):Play()
+    end)
+end
+
+-- Click vào nút mở rộng (cả ImageLabel và ImageButton đều bắt)
+TopBarExpandClicker.MouseButton1Click:Connect(openGUI)
+-- Fallback: click vào chính ImageLabel
+TopBarExpandBtn.MouseButton1Click:Connect(openGUI)
+-- Fallback 2: click vào TopBarTitle
+TopBarTitle.MouseButton1Click:Connect(openGUI)
+
+-- Nút thu nhỏ trên TitleBar
+local MinBtn = Instance.new("ImageLabel")
+MinBtn.Size = UDim2.new(0, 34, 0, 34)
+MinBtn.Position = UDim2.new(1, -42, 0.5, -17)
+MinBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
+MinBtn.BorderSizePixel = 0
+MinBtn.Image = gifFrames[1]
+MinBtn.Parent = TitleBar
+MinBtn.ZIndex = 2
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 9)
+
+-- GIF animation cho MinBtn
+local minFrameIndex = 1
+local minLastFrameTime = 0
+RunService.Heartbeat:Connect(function()
+    if not MinBtn or not MinBtn.Parent then return end
+    local now = tick()
+    if now - minLastFrameTime >= 0.10 then
+        minLastFrameTime = now
+        minFrameIndex = minFrameIndex + 1
+        if minFrameIndex > #gifFrames then minFrameIndex = 1 end
+        pcall(function()
+            MinBtn.Image = gifFrames[minFrameIndex]
+        end)
+    end
+end)
+
+-- Clicker cho MinBtn
+local MinBtnClicker = Instance.new("ImageButton")
+MinBtnClicker.Size = UDim2.new(1, 0, 1, 0)
+MinBtnClicker.BackgroundTransparency = 1
+MinBtnClicker.ImageTransparency = 1
+MinBtnClicker.Parent = MinBtn
+
+MinBtnClicker.MouseButton1Click:Connect(closeGUI)
+MinBtn.MouseButton1Click:Connect(closeGUI)
 
 local savedFramePosition = Frame.Position
 local isOpen = false
@@ -1974,7 +2046,6 @@ rainbowNumHolder.Size = UDim2.new(1, -10, 0, 34)
 rainbowNumHolder.BackgroundTransparency = 1
 rainbowNumHolder.LayoutOrder = currentOrder
 currentOrder = currentOrder + 1
--- (tiếp tục từ rainbowNumHolder)
 makeNumberInput(rainbowNumHolder, "Rainbow Speed", 5, 1, 50, function(v)
     _G.rainbowTrailSpeed = v / 10
 end)
@@ -2205,3 +2276,6 @@ RunService.Heartbeat:Connect(function()
         lastOptionsString = currentString
     end
 end)
+
+print("Kittylol paid loaded successfully!")
+notify("Kittylol paid", "Script loaded ✅ - Click GIF or title bar to open GUI")
