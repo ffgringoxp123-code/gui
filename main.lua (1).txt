@@ -40,7 +40,7 @@ end
 
 -- WindUI-like icon provider (lucide names)
 local IconsProvider = nil
-local ICONS_URL = "https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"
+local ICONS_URL = "https://raw.githubusercontent.com/ffgringoxp123-code/gui/refs/heads/main/Icon"
 
 do
     local ok, mod = pcall(function()
