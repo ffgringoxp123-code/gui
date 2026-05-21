@@ -286,97 +286,30 @@ local function loadColors()
     }
 end
 
--- ======================== LOADING SCREEN ========================
-local guiReady = false
-local colors = loadColors()
+-- ======================== GIF ANIMATION SYSTEM ========================
+local gifIds = {
+    "119074790388219",
+    "115672794096960",
+    "71738870122726",
+    "118412167563569",
+    "137807993707113",
+    "88762654041910",
+    "129594193999212",
+    "93903492440603",
+    "137536008841598"
+}
 
-local function createLoadingScreen()
-    local LoadingGui = Instance.new("ScreenGui", game.CoreGui)
-    LoadingGui.Name = "KittylolLoadingGui"
-    LoadingGui.ResetOnSpawn = false
-    LoadingGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local gifSpeed = 0.10
+local gifIndex = 1
 
-    local LoadingOverlay = Instance.new("Frame", LoadingGui)
-    LoadingOverlay.Size = UDim2.new(1, 0, 1, 0)
-    LoadingOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    LoadingOverlay.BackgroundTransparency = 0.5
-    LoadingOverlay.BorderSizePixel = 0
-    LoadingOverlay.ZIndex = 999
-
-    local LoadingBox = Instance.new("Frame", LoadingGui)
-    LoadingBox.Size = UDim2.new(0, 220, 0, 130)
-    LoadingBox.Position = UDim2.new(0.5, -110, 0.5, -65)
-    LoadingBox.BackgroundColor3 = colors.Dark
-    LoadingBox.BorderSizePixel = 0
-    LoadingBox.ZIndex = 1000
-    Instance.new("UICorner", LoadingBox).CornerRadius = UDim.new(0, 18)
-    local LoadingBoxStroke = Instance.new("UIStroke", LoadingBox)
-    LoadingBoxStroke.Color = colors.Border
-    LoadingBoxStroke.Thickness = 2.5
-
-    local LoadingTitle2 = Instance.new("TextLabel", LoadingBox)
-    LoadingTitle2.Size = UDim2.new(1, 0, 0, 35)
-    LoadingTitle2.Position = UDim2.new(0, 0, 0, 8)
-    LoadingTitle2.BackgroundTransparency = 1
-    LoadingTitle2.Text = "Kittylol paid"
-    LoadingTitle2.Font = Enum.Font.GothamBold
-    LoadingTitle2.TextSize = 22
-    LoadingTitle2.TextColor3 = colors.Text
-
-    local LoadingSub2 = Instance.new("TextLabel", LoadingBox)
-    LoadingSub2.Size = UDim2.new(1, 0, 0, 20)
-    LoadingSub2.Position = UDim2.new(0, 0, 0, 43)
-    LoadingSub2.BackgroundTransparency = 1
-    LoadingSub2.Text = "Loading..."
-    LoadingSub2.Font = Enum.Font.Gotham
-    LoadingSub2.TextSize = 11
-    LoadingSub2.TextColor3 = colors.Sub
-
-    local LoadingBarBg2 = Instance.new("Frame", LoadingBox)
-    LoadingBarBg2.Size = UDim2.new(0.8, 0, 0, 12)
-    LoadingBarBg2.Position = UDim2.new(0.1, 0, 0, 75)
-    LoadingBarBg2.BackgroundColor3 = colors.Dark
-    LoadingBarBg2.BorderSizePixel = 0
-    Instance.new("UICorner", LoadingBarBg2).CornerRadius = UDim.new(0, 6)
-
-    local LoadingBar2 = Instance.new("Frame", LoadingBarBg2)
-    LoadingBar2.Size = UDim2.new(0, 0, 1, 0)
-    LoadingBar2.BackgroundColor3 = colors.Text
-    LoadingBar2.BorderSizePixel = 0
-    Instance.new("UICorner", LoadingBar2).CornerRadius = UDim.new(0, 6)
-
-    local LoadingPercent2 = Instance.new("TextLabel", LoadingBox)
-    LoadingPercent2.Size = UDim2.new(1, 0, 0, 22)
-    LoadingPercent2.Position = UDim2.new(0, 0, 0, 95)
-    LoadingPercent2.BackgroundTransparency = 1
-    LoadingPercent2.Text = "0%"
-    LoadingPercent2.Font = Enum.Font.GothamBold
-    LoadingPercent2.TextSize = 14
-    LoadingPercent2.TextColor3 = colors.Text
-
-    coroutine.wrap(function()
-        for i = 1, 100 do
-            LoadingBar2:TweenSize(UDim2.new(i/100, 0, 1, 0), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.015, true)
-            LoadingPercent2.Text = i .. "%"
-            if i <= 30 then
-                LoadingSub2.Text = "Initializing..."
-            elseif i <= 60 then
-                LoadingSub2.Text = "Loading modules..."
-            else
-                LoadingSub2.Text = "Starting..."
-            end
-            task.wait(0.015 + (i / 1200))
-        end
-        task.wait(0.2)
-        TweenService:Create(LoadingOverlay, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(LoadingBox, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1}):Play()
-        task.wait(0.4)
-        LoadingGui:Destroy()
-        guiReady = true
-    end)()
+local function getNextGifId()
+    local id = gifIds[gifIndex]
+    gifIndex = gifIndex + 1
+    if gifIndex > #gifIds then
+        gifIndex = 1
+    end
+    return id
 end
-
-createLoadingScreen()
 
 -- ======================== MAIN SCRIPT ========================
 
@@ -400,6 +333,7 @@ mt.__index = newcclosure(function(self, key)
 end)
 setreadonly(mt, true)
 
+local colors = loadColors()
 local RedBorder = colors.Border
 local RedLight = colors.Light
 local RedDark = colors.Dark
@@ -408,9 +342,6 @@ local WhiteBg = colors.WhiteBg
 local TextRed = colors.Text
 local TextSub = colors.Sub
 local BgTrans = colors.BgTrans
-
--- ĐỢI loading screen hoàn tất TRƯỚC khi tạo GUI chính
-repeat task.wait() until guiReady
 
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "KittylolGui"
@@ -471,7 +402,7 @@ end
 
 task.spawn(function()
     while not remoteHooked do task.wait(0.1) end
-    notify("Kittylol paid", "remote hooked ✅")
+    notify("Kittylol paid", "remote hooked")
 end)
 
 -- Ability ESP
@@ -1080,7 +1011,7 @@ TopBarGif.Size = UDim2.new(0, 24, 0, 24)
 TopBarGif.Position = UDim2.new(0, 6, 0.5, -12)
 TopBarGif.BackgroundColor3 = Color3.fromRGB(40, 10, 20)
 TopBarGif.BorderSizePixel = 0
-TopBarGif.Image = "rbxassetid://18461561393"  -- Thay bằng rbxassetid GIF của bạn
+TopBarGif.Image = "rbxassetid://" .. getNextGifId()
 TopBarGif.ScaleType = Enum.ScaleType.Fit
 TopBarGif.ZIndex = 2
 Instance.new("UICorner", TopBarGif).CornerRadius = UDim.new(0, 6)
@@ -1114,9 +1045,19 @@ Instance.new("UICorner", TopBarExpandBtn).CornerRadius = UDim.new(0, 6)
 
 makeDraggable(TopBar, TopBarTitle)
 
+-- GIF animation loop for TopBar
+task.spawn(function()
+    while TopBar and TopBar.Parent do
+        task.wait(gifSpeed)
+        if TopBarGif and TopBarGif.Parent then
+            TopBarGif.Image = "rbxassetid://" .. getNextGifId()
+        end
+    end
+end)
+
 -- ==================== MAIN GUI (FULL PANEL - THU NHỎ LẠI) ====================
-local GUI_WIDTH = 340  -- Giảm từ 390 xuống 340
-local GUI_HEIGHT = 460 -- Giảm từ 500 xuống 460
+local GUI_WIDTH = 340
+local GUI_HEIGHT = 460
 local Frame = Instance.new("Frame", ScreenGui)
 Frame.Size = UDim2.new(0, GUI_WIDTH, 0, GUI_HEIGHT)
 Frame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
@@ -1150,7 +1091,7 @@ TitleGif.Size = UDim2.new(0, 34, 0, 34)
 TitleGif.Position = UDim2.new(0, 10, 0.5, -17)
 TitleGif.BackgroundColor3 = Color3.fromRGB(40, 10, 20)
 TitleGif.BorderSizePixel = 0
-TitleGif.Image = "rbxassetid://18461561393"  -- Thay bằng rbxassetid GIF của bạn
+TitleGif.Image = "rbxassetid://" .. getNextGifId()
 TitleGif.ScaleType = Enum.ScaleType.Fit
 TitleGif.ZIndex = 2
 Instance.new("UICorner", TitleGif).CornerRadius = UDim.new(0, 10)
@@ -1183,6 +1124,16 @@ MinBtn.ZIndex = 2
 Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 9)
 
 makeDraggable(Frame, TitleBar)
+
+-- GIF animation loop for Title
+task.spawn(function()
+    while Frame and Frame.Parent do
+        task.wait(gifSpeed)
+        if TitleGif and TitleGif.Parent then
+            TitleGif.Image = "rbxassetid://" .. getNextGifId()
+        end
+    end
+end)
 
 local savedFramePosition = Frame.Position
 local isOpen = false
