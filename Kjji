@@ -10,7 +10,6 @@ local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StatsService = game:GetService("Stats")
-local VIM = game:GetService("VirtualInputManager")
 
 local remote, f_raw = nil, nil
 local c = {nil, nil, nil, nil, nil, nil, nil}
@@ -24,11 +23,6 @@ local parried_balls = {}
 local billboardLabels = {}
 local last_ball = nil
 
-local keyAutoParry = Enum.KeyCode.T
-local keyShowPeak = Enum.KeyCode.E
-local keySpam = Enum.KeyCode.Q
-local keyAutoSpamParry = Enum.KeyCode.Y
-
 getgenv().AbilityESP = false
 local originalMaterials = {}
 local originalDecalsTextures = {}
@@ -36,6 +30,26 @@ local fakeStreakValue = 0
 local groupEnabled = false
 local icono = "rbxassetid://89658127170771"
 local iconb = "rbxassetid://75598166115655"
+
+-- GIF FRAMES
+local gifFrames = {
+    "rbxassetid://119074790388219", "rbxassetid://115672794096960", "rbxassetid://71738870122726",
+    "rbxassetid://118412167563569", "rbxassetid://137807993707113", "rbxassetid://88762654041910",
+    "rbxassetid://129594193999212", "rbxassetid://93903492440603", "rbxassetid://137536008841598",
+}
+
+local function animateGIF(img, interval)
+    interval = interval or 0.10
+    local fi = 1; local lft = 0
+    return RunService.Heartbeat:Connect(function()
+        if not img or not img.Parent then return end
+        local n = tick()
+        if n - lft >= interval then
+            lft = n; fi = fi + 1; if fi > #gifFrames then fi = 1 end
+            pcall(function() img.Image = gifFrames[fi] end)
+        end
+    end)
+end
 
 -- EMOTES
 local emotes_data = {"Dance", "Wave", "Point", "Sit", "Laugh", "Clap", "Cheer"}
@@ -118,11 +132,9 @@ PlayerModules.ModuleFly = PlayerModules.ModuleFly or function(state)
     if not hrp then return end
     if state then
         local bv = Instance.new("BodyVelocity")
-        bv.MaxForce = Vector3.new(10000, 10000, 10000)
-        bv.P = 10000; bv.Velocity = Vector3.new(0,0,0); bv.Parent = hrp
+        bv.MaxForce = Vector3.new(10000, 10000, 10000); bv.P = 10000; bv.Velocity = Vector3.new(0,0,0); bv.Parent = hrp
         local bg = Instance.new("BodyGyro")
-        bg.MaxTorque = Vector3.new(10000, 10000, 10000)
-        bg.P = 10000; bg.CFrame = hrp.CFrame; bg.Parent = hrp
+        bg.MaxTorque = Vector3.new(10000, 10000, 10000); bg.P = 10000; bg.CFrame = hrp.CFrame; bg.Parent = hrp
         getgenv().flyConnection = RunService.Heartbeat:Connect(function()
             if not getgenv().flying then return end
             local speed = getgenv().FlySpeed or 50
@@ -191,27 +203,9 @@ local function __set(__name, __char)
     __hum:ApplyDescriptionClientServer(__desc)
 end
 
--- GIF FRAMES
-local gifFrames = {
-    "rbxassetid://119074790388219", "rbxassetid://115672794096960", "rbxassetid://71738870122726",
-    "rbxassetid://118412167563569", "rbxassetid://137807993707113", "rbxassetid://88762654041910",
-    "rbxassetid://129594193999212", "rbxassetid://93903492440603", "rbxassetid://137536008841598",
-}
-local function animateGIF(img, interval)
-    interval = interval or 0.10
-    local fi = 1; local lft = 0
-    return RunService.Heartbeat:Connect(function()
-        if not img or not img.Parent then return end
-        local n = tick()
-        if n - lft >= interval then
-            lft = n; fi = fi + 1; if fi > #gifFrames then fi = 1 end
-            pcall(function() img.Image = gifFrames[fi] end)
-        end
-    end)
-end
-
+-- COLORS
 local colors = {Border=Color3.fromRGB(255,20,147),Light=Color3.fromRGB(255,105,180),Dark=Color3.fromRGB(150,10,80),Pale=Color3.fromRGB(80,20,40),BgTrans=Color3.fromRGB(40,10,20),Text=Color3.fromRGB(255,182,193),Sub=Color3.fromRGB(200,130,150),WhiteBg=Color3.fromRGB(255,200,210)}
-local RedBorder=colors.Border; local RedLight=colors.Light; local RedDark=colors.Dark; local RedPale=colors.Pale; local WhiteBg=colors.WhiteBg; local TextRed=colors.Text; local TextSub=colors.Sub; local BgTrans=colors.BgTrans
+local RedBorder=colors.Border; local RedLight=colors.Light; local RedDark=colors.Dark; local RedPale=colors.Pale; local WhiteBg=colors.WhiteBg; local TextRed=colors.Text; local TextSub=colors.Sub
 
 -- METATABLE HOOK
 local mt = getrawmetatable(game)
@@ -233,6 +227,7 @@ mt.__index = newcclosure(function(self, key)
 end)
 setreadonly(mt, true)
 
+-- SCREEN GUI
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "KittylolGui"; ScreenGui.ResetOnSpawn = false
 
@@ -293,7 +288,7 @@ for _, p in pairs(Players:GetPlayers()) do
 end
 Players.PlayerAdded:Connect(function(p) p.CharacterAdded:Connect(function() createBillboardGui(p) end) end)
 
--- MAKE DRAGGABLE
+-- DRAGGABLE
 local function makeDraggable(frame, handle)
     handle = handle or frame
     local dragging, dragInput, dragStart, startPos
@@ -382,9 +377,7 @@ function Plasma.cleanup_trails(ball)
     if not ball then return end
     local container = Plasma.trail_containers[ball]
     if container then
-        for _, part in ipairs(container:GetChildren()) do
-            if part:IsA("Part") or part:IsA("Attachment") then part:Destroy() end
-        end
+        for _, part in ipairs(container:GetChildren()) do if part:IsA("Part") or part:IsA("Attachment") then part:Destroy() end end
         container:Destroy(); Plasma.trail_containers[ball] = nil
     end
     Plasma.trail_parts[ball] = nil
@@ -412,13 +405,9 @@ local trailConnection = RunService.Heartbeat:Connect(function()
     if ball and ball:IsA("BasePart") then
         if ball ~= last_ball then if last_ball then Plasma.cleanup_trails(last_ball) end; last_ball = ball; Plasma.create_trails(ball) end
         local trailParts = Plasma.trail_parts[ball]
-        if trailParts then
-            local vel = ball.Velocity; local pos = ball.Position
-            for _, tp in ipairs(trailParts) do tp.part.CFrame = CFrame.new(pos - (vel * tp.offset)) end
-        end
-    else
-        if last_ball then Plasma.cleanup_trails(last_ball); last_ball = nil end
-    end
+        if trailParts then local vel = ball.Velocity; local pos = ball.Position
+            for _, tp in ipairs(trailParts) do tp.part.CFrame = CFrame.new(pos - (vel * tp.offset)) end end
+    else if last_ball then Plasma.cleanup_trails(last_ball); last_ball = nil end end
 end)
 local function setupRainbowTrail()
     if _G.RainbowTrailLoop then _G.RainbowTrailLoop:Disconnect(); _G.RainbowTrailLoop = nil end
@@ -528,51 +517,45 @@ Instance.new("UICorner", ImmHeightBox).CornerRadius = UDim.new(0,6)
 ImmHeightBox.FocusLost:Connect(function(enter) if enter then local v = tonumber(ImmHeightBox.Text) or 50; Immortality.DesyncHeight = v; ImmHeightBox.Text = tostring(v) end end)
 makeDraggable(ImmPanel, ImmTitle)
 
--- ==================== TOP BAR (MINIMIZED) ====================
-local BAR_HEIGHT = 30; local BAR_WIDTH = 180
+-- ==================== TOP BAR ====================
+local BAR_HEIGHT = 30; local BAR_WIDTH = 200
 local TopBar = Instance.new("Frame", ScreenGui)
 TopBar.Size = UDim2.new(0,BAR_WIDTH,0,BAR_HEIGHT); TopBar.Position = UDim2.new(0.5,-BAR_WIDTH/2,0,6)
 TopBar.BackgroundColor3 = Color3.fromRGB(40,10,20); TopBar.BackgroundTransparency = 0.2; TopBar.BorderSizePixel = 0; TopBar.ClipsDescendants = true
 Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0,8)
 local TopBarStroke = Instance.new("UIStroke", TopBar); TopBarStroke.Color = RedBorder; TopBarStroke.Thickness = 2
 
--- TÊN + GIF CẠNH NHAU (GIF bên trái, tên bên phải)
-local TopBarTitle = Instance.new("TextLabel", TopBar)
-TopBarTitle.Size = UDim2.new(1,-45,1,0); TopBarTitle.Position = UDim2.new(0,0,0,0)
-TopBarTitle.BackgroundTransparency = 1; TopBarTitle.Text = ""
-TopBarTitle.Font = Enum.Font.GothamBold; TopBarTitle.TextSize = 14; TopBarTitle.TextColor3 = TextRed; TopBarTitle.TextXAlignment = Enum.TextXAlignment.Left
-
--- Container cho tên + GIF trên TopBar
+-- Container cho nội dung TopBar
 local TopBarInner = Instance.new("Frame", TopBar)
-TopBarInner.Size = UDim2.new(1,-10,1,0); TopBarInner.Position = UDim2.new(0.05,0,0,0)
+TopBarInner.Size = UDim2.new(1,-8,1,0); TopBarInner.Position = UDim2.new(0.025,0,0,0)
 TopBarInner.BackgroundTransparency = 1; TopBarInner.BorderSizePixel = 0
 
--- GIF bên trái trên TopBar
+-- GIF bên trái
 local TopBarGif = Instance.new("ImageLabel")
 TopBarGif.Size = UDim2.new(0,22,0,22); TopBarGif.Position = UDim2.new(0,0,0.5,-11)
 TopBarGif.BackgroundColor3 = Color3.fromRGB(150,10,80); TopBarGif.BorderSizePixel = 0; TopBarGif.Image = gifFrames[1]
 TopBarGif.Parent = TopBarInner; TopBarGif.ZIndex = 2
 Instance.new("UICorner", TopBarGif).CornerRadius = UDim.new(0,4)
-local TopBarGifClicker = Instance.new("ImageButton"); TopBarGifClicker.Size = UDim2.new(1,0,1,0); TopBarGifClicker.BackgroundTransparency = 1; TopBarGifClicker.ImageTransparency = 1; TopBarGifClicker.Parent = TopBarGif
+local TopBarGifClicker = Instance.new("TextButton"); TopBarGifClicker.Size = UDim2.new(1,0,1,0); TopBarGifClicker.BackgroundTransparency = 1; TopBarGifClicker.Text = ""; TopBarGifClicker.Parent = TopBarGif
 animateGIF(TopBarGif)
 
--- Tên bên phải GIF
+-- Tên bên cạnh GIF
 local TopBarName = Instance.new("TextLabel", TopBarInner)
-TopBarName.Size = UDim2.new(1,-28,1,0); TopBarName.Position = UDim2.new(0,26,0,0)
+TopBarName.Size = UDim2.new(1,-105,1,0); TopBarName.Position = UDim2.new(0,26,0,0)
 TopBarName.BackgroundTransparency = 1; TopBarName.Text = "Kittylol paid"
 TopBarName.Font = Enum.Font.GothamBold; TopBarName.TextSize = 14; TopBarName.TextColor3 = TextRed; TopBarName.TextXAlignment = Enum.TextXAlignment.Left
 
--- Nút "+" để mở GUI (thay thế GIF mở rộng)
+-- Nút "+" mở GUI
 local TopBarExpandText = Instance.new("TextButton")
-TopBarExpandText.Size = UDim2.new(0,24,0,24); TopBarExpandText.Position = UDim2.new(1,-28,0.5,-12)
+TopBarExpandText.Size = UDim2.new(0,22,0,22); TopBarExpandText.Position = UDim2.new(1,-26,0.5,-11)
 TopBarExpandText.BackgroundColor3 = Color3.fromRGB(150,10,80); TopBarExpandText.BorderSizePixel = 0
 TopBarExpandText.Text = "+"; TopBarExpandText.TextColor3 = WhiteBg; TopBarExpandText.Font = Enum.Font.GothamBold; TopBarExpandText.TextSize = 18
-TopBarExpandText.Parent = TopBar; TopBarExpandText.ZIndex = 2
-Instance.new("UICorner", TopBarExpandText).CornerRadius = UDim.new(0,6)
+TopBarExpandText.Parent = TopBarInner; TopBarExpandText.ZIndex = 2
+Instance.new("UICorner", TopBarExpandText).CornerRadius = UDim.new(0,4)
 
 makeDraggable(TopBar, TopBarName)
 
--- ==================== MAIN GUI (FULL PANEL) ====================
+-- ==================== MAIN GUI ====================
 local GUI_WIDTH = 340; local GUI_HEIGHT = 460
 local Frame = Instance.new("Frame", ScreenGui)
 Frame.Size = UDim2.new(0,0,0,0); Frame.Position = UDim2.new(0.5,-GUI_WIDTH/2,0.5,-GUI_HEIGHT/2)
@@ -587,7 +570,7 @@ Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0,22)
 local TitleBarMask = Instance.new("Frame", TitleBar); TitleBarMask.Size = UDim2.new(1,0,0,26); TitleBarMask.Position = UDim2.new(0,0,0,22)
 TitleBarMask.BackgroundColor3 = Color3.fromRGB(40,10,20); TitleBarMask.BackgroundTransparency = 0.15; TitleBarMask.BorderSizePixel = 0
 
--- Title có GIF cạnh tên
+-- Container cho Title
 local TitleInner = Instance.new("Frame", TitleBar)
 TitleInner.Size = UDim2.new(1,-80,1,0); TitleInner.Position = UDim2.new(0.06,0,0,0)
 TitleInner.BackgroundTransparency = 1; TitleInner.BorderSizePixel = 0
@@ -608,7 +591,7 @@ TitleLbl.Font = Enum.Font.GothamBold; TitleLbl.TextSize = 18; TitleLbl.TextColor
 
 makeDraggable(Frame, TitleBar)
 
--- Nút "+/-" thu nhỏ (thay GIF) trên TitleBar
+-- Nút "-" thu nhỏ
 local MinBtn = Instance.new("TextButton")
 MinBtn.Size = UDim2.new(0,34,0,34); MinBtn.Position = UDim2.new(1,-42,0.5,-17)
 MinBtn.BackgroundColor3 = Color3.fromRGB(150,10,80); MinBtn.BorderSizePixel = 0
@@ -616,15 +599,12 @@ MinBtn.Text = "-"; MinBtn.TextColor3 = WhiteBg; MinBtn.Font = Enum.Font.GothamBo
 MinBtn.Parent = TitleBar; MinBtn.ZIndex = 2
 Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0,9)
 
--- MỞ GUI
+-- OPEN / CLOSE
 local function openGUI()
     Frame.Position = UDim2.new(0.5,-GUI_WIDTH/2,0.5,-GUI_HEIGHT/2)
     Frame.Size = UDim2.new(0,0,0,0); Frame.Visible = true; TopBar.Visible = false
     TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size=UDim2.new(0,GUI_WIDTH,0,GUI_HEIGHT)}):Play()
-    notify("Kittylol","GUI opened")
 end
-
--- ĐÓNG GUI
 local function closeGUI()
     local tw = TweenService:Create(Frame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size=UDim2.new(0,0,0,0)})
     tw:Play()
@@ -638,10 +618,9 @@ TopBarExpandText.MouseButton1Click:Connect(openGUI)
 TopBarGifClicker.MouseButton1Click:Connect(openGUI)
 TopBarGif.MouseButton1Click:Connect(openGUI)
 TopBarName.MouseButton1Click:Connect(openGUI)
-
 MinBtn.MouseButton1Click:Connect(closeGUI)
 
--- Content
+-- ==================== CONTENT ====================
 local Content = Instance.new("ScrollingFrame", Frame)
 Content.Size = UDim2.new(1,0,1,-48); Content.Position = UDim2.new(0,0,0,48); Content.BackgroundTransparency = 1; Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 4; Content.ScrollBarImageColor3 = RedBorder; Content.CanvasSize = UDim2.new(0,0,0,2200)
@@ -683,7 +662,7 @@ local function makeNumberInput(holder, label, default, minVal, maxVal, callback)
     box.FocusLost:Connect(function(enter) if enter then local v = tonumber(box.Text) or default; v = math.clamp(v,minVal,maxVal); box.Text = tostring(v); lbl.Text = label..": "..v; callback(v) end end)
 end
 
--- BUILD GUI
+-- BUILD GUI CONTENT
 makDiv(); makeSectionLabel("-- COMBAT --")
 makeToggle("Auto Parry", false, function(v) AutoParry = v; parried_balls = {}; notify("Kittylol","Auto Parry: "..(v and "ON" or "OFF")) end)
 makDiv()
@@ -696,8 +675,6 @@ local immSettingsHolder = Instance.new("Frame", Content); immSettingsHolder.Size
 makeNumberInput(immSettingsHolder, "Immortal Radius", 40, 0, 200, function(v) Immortality.DesyncRadius = v; ImmRadiusBox.Text = tostring(v) end)
 local immSettingsHolder2 = Instance.new("Frame", Content); immSettingsHolder2.Size = UDim2.new(1,-10,0,34); immSettingsHolder2.BackgroundTransparency = 1; immSettingsHolder2.LayoutOrder = currentOrder; currentOrder = currentOrder+1
 makeNumberInput(immSettingsHolder2, "Immortal Height", 50, 0, 200, function(v) Immortality.DesyncHeight = v; ImmHeightBox.Text = tostring(v) end)
-
--- Triggerbot
 makDiv()
 makeToggle("Triggerbot", false, function(v)
     getgenv().TriggerbotEnabled = v
@@ -766,25 +743,23 @@ makeToggle("Auto Jump", false, function(v) getgenv().autojump = v; if v then las
 makDiv(); makeSectionLabel("-- PLAYER COSMETICS --")
 makeToggle("Cosmetics", false, function(v)
     CosmeticsActive = v
-    pcall(function()
-        local HeadlessActive = v; local KorbloxActive = v
-        if CosmeticsActive then
-            if LocalPlayer.Character then applyCosmetics(LocalPlayer.Character,HeadlessActive,KorbloxActive) end
-            if _G.PlayerCosmeticsCleanup.characterAddedConn then _G.PlayerCosmeticsCleanup.characterAddedConn:Disconnect() end
-            _G.PlayerCosmeticsCleanup.characterAddedConn = LocalPlayer.CharacterAdded:Connect(function(newChar) newChar:WaitForChild("Head"); task.wait(0.5); if CosmeticsActive then applyCosmetics(newChar,HeadlessActive,KorbloxActive) end end)
-        else
-            if _G.PlayerCosmeticsCleanup.characterAddedConn then _G.PlayerCosmeticsCleanup.characterAddedConn:Disconnect(); _G.PlayerCosmeticsCleanup.characterAddedConn = nil end
-            local char = LocalPlayer.Character
-            if char then
-                local head = char:FindFirstChild("Head")
-                if head then head.Transparency = 0
-                    for _, child in pairs(head:GetChildren()) do if child:IsA("Decal") then child.Transparency = 0 end end
-                end
-                local humanoid = char:FindFirstChildOfClass("Humanoid")
-                if humanoid then local desc = LocalPlayer:GetAppliedDescription(); if desc then pcall(function() humanoid:ApplyDescription(desc) end) end end
+    local HeadlessActive = v; local KorbloxActive = v
+    if CosmeticsActive then
+        if LocalPlayer.Character then applyCosmetics(LocalPlayer.Character,HeadlessActive,KorbloxActive) end
+        if _G.PlayerCosmeticsCleanup.characterAddedConn then _G.PlayerCosmeticsCleanup.characterAddedConn:Disconnect() end
+        _G.PlayerCosmeticsCleanup.characterAddedConn = LocalPlayer.CharacterAdded:Connect(function(newChar) newChar:WaitForChild("Head"); task.wait(0.5); if CosmeticsActive then applyCosmetics(newChar,HeadlessActive,KorbloxActive) end end)
+    else
+        if _G.PlayerCosmeticsCleanup.characterAddedConn then _G.PlayerCosmeticsCleanup.characterAddedConn:Disconnect(); _G.PlayerCosmeticsCleanup.characterAddedConn = nil end
+        local char = LocalPlayer.Character
+        if char then
+            local head = char:FindFirstChild("Head")
+            if head then head.Transparency = 0
+                for _, child in pairs(head:GetChildren()) do if child:IsA("Decal") then child.Transparency = 0 end end
             end
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then local desc = LocalPlayer:GetAppliedDescription(); if desc then pcall(function() humanoid:ApplyDescription(desc) end) end end
         end
-    end)
+    end
 end)
 
 -- FLY
@@ -795,19 +770,19 @@ makeNumberInput(flyNumHolder, "Fly Speed", 50, 10, 200, function(v) getgenv().Fl
 
 -- JUMP POWER
 makDiv(); makeSectionLabel("-- JUMP POWER --")
-makeToggle("Jump Power", false, function(v) getgenv().CustomJumpPower = 50; getgenv().JumpPowerCheckboxEnabled = v; local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.UseJumpPower = true; char.Humanoid.JumpPower = v and 50 or (getgenv().OriginalValues and getgenv().OriginalValues.JumpPower or 50) end end)
+makeToggle("Jump Power", false, function(v) getgenv().CustomJumpPower = 50; getgenv().JumpPowerCheckboxEnabled = v; local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.UseJumpPower = true; char.Humanoid.JumpPower = v and 50 or 50 end end)
 local jumpNumHolder = Instance.new("Frame", Content); jumpNumHolder.Size = UDim2.new(1,-10,0,34); jumpNumHolder.BackgroundTransparency = 1; jumpNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder+1
 makeNumberInput(jumpNumHolder, "Jump Power", 50, 50, 500, function(v) getgenv().CustomJumpPower = v; if getgenv().JumpPowerCheckboxEnabled then local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.JumpPower = v end end end)
 
 -- GRAVITY
 makDiv(); makeSectionLabel("-- GRAVITY --")
-makeToggle("Gravity", false, function(v) getgenv().GravityCheckboxEnabled = v; getgenv().CustomGravity = 196; workspace.Gravity = v and 196 or (getgenv().OriginalValues and getgenv().OriginalValues.Gravity or 196.2) end)
+makeToggle("Gravity", false, function(v) getgenv().GravityCheckboxEnabled = v; getgenv().CustomGravity = 196; workspace.Gravity = v and 196 or 196.2 end)
 local gravityNumHolder = Instance.new("Frame", Content); gravityNumHolder.Size = UDim2.new(1,-10,0,34); gravityNumHolder.BackgroundTransparency = 1; gravityNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder+1
 makeNumberInput(gravityNumHolder, "Gravity", 196, 0, 500, function(v) getgenv().CustomGravity = v; if getgenv().GravityCheckboxEnabled then workspace.Gravity = v end end)
 
 -- HIP HEIGHT
 makDiv(); makeSectionLabel("-- HIP HEIGHT --")
-makeToggle("Hip Height", false, function(v) getgenv().HipHeightCheckboxEnabled = v; getgenv().CustomHipHeight = 0; local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.HipHeight = v and 0 or (getgenv().OriginalValues and getgenv().OriginalValues.HipHeight or 0) end end)
+makeToggle("Hip Height", false, function(v) getgenv().HipHeightCheckboxEnabled = v; getgenv().CustomHipHeight = 0; local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.HipHeight = v and 0 or 0 end end)
 local hipNumHolder = Instance.new("Frame", Content); hipNumHolder.Size = UDim2.new(1,-10,0,34); hipNumHolder.BackgroundTransparency = 1; hipNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder+1
 makeNumberInput(hipNumHolder, "Hip Height", 0, -10, 250, function(v) getgenv().CustomHipHeight = v; if getgenv().HipHeightCheckboxEnabled then local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.HipHeight = v end end end)
 
@@ -826,8 +801,7 @@ makeToggle("Infinite Jump", false, function(v)
         end
     else
         if getgenv().InfiniteJumpConnection then getgenv().InfiniteJumpConnection:Disconnect(); getgenv().InfiniteJumpConnection = nil end
-    end
-    notify("Kittylol","Infinite Jump: "..(v and "ON" or "OFF"))
+    end; notify("Kittylol","Infinite Jump: "..(v and "ON" or "OFF"))
 end)
 
 -- PLAYER FOLLOW
@@ -885,18 +859,12 @@ makDiv(); makeSectionLabel("-- VISUALS --")
 makeToggle("Ball Stats", false, function(v) ShowPeak = v; PFrame.Visible = v end)
 makDiv()
 makeToggle("Ability ESP", false, function(v) getgenv().AbilityESP = v; for _, label in pairs(billboardLabels) do if label then label.Visible = v end end; notify("Kittylol","Ability ESP: "..(v and "ON" or "OFF")) end)
-
--- ANTI LAG
 makDiv(); makeSectionLabel("-- ANTI LAG --")
 makeToggle("Anti Lag", false, function(v) AntiLag = v; applyAntiLag(v); notify("Kittylol","Anti Lag: "..(v and "ON" or "OFF")) end)
-
--- FAKE WIN STREAK
 makDiv(); makeSectionLabel("-- FAKE WIN STREAK --")
 makeToggle("Fake Win Streak", false, function(v) groupEnabled = v; if v then applyFake(fakeStreakValue > 0 and fakeStreakValue or 1) else clearFake() end; notify("Kittylol","Fake Win Streak: "..(v and "ON" or "OFF")) end)
 local streakNumHolder = Instance.new("Frame", Content); streakNumHolder.Size = UDim2.new(1,-10,0,34); streakNumHolder.BackgroundTransparency = 1; streakNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder+1
 makeNumberInput(streakNumHolder, "Streak Value", 100, 1, 9999, function(v) fakeStreakValue = v; if groupEnabled then applyFake(v) end end)
-
--- BALL TRAIL
 makDiv(); makeSectionLabel("-- BALL TRAIL --")
 local trailHolder = Instance.new("Frame", Content); trailHolder.Size = UDim2.new(1,-10,0,30); trailHolder.BackgroundTransparency = 1; trailHolder.LayoutOrder = currentOrder; currentOrder = currentOrder+1
 local trailLbl = Instance.new("TextLabel", trailHolder); trailLbl.Size = UDim2.new(0.6,0,1,0); trailLbl.Position = UDim2.new(0.045,0,0,0)
@@ -920,35 +888,26 @@ rainbowCheck.BackgroundColor3 = RedDark; rainbowCheck.Text = ""; rainbowCheck.Fo
 Instance.new("UICorner", rainbowCheck).CornerRadius = UDim.new(0,5)
 local rainbowCheckMark = Instance.new("TextLabel", rainbowCheck); rainbowCheckMark.Size = UDim2.new(1,0,1,0); rainbowCheckMark.BackgroundTransparency = 1; rainbowCheckMark.Text = ""; rainbowCheckMark.Font = Enum.Font.GothamBold; rainbowCheckMark.TextColor3 = WhiteBg; rainbowCheckMark.Visible = false
 local rainbowState = false
-rainbowCheck.MouseButton1Click:Connect(function() rainbowState = not rainbowState; rainbowCheckMark.Text = rainbowState and "✓" or ""; rainbowCheckMark.Visible = rainbowState; rainbowCheck.BackgroundColor3 = rainbowState and RedBorder or RedDark; PlasmaTrails.RainbowTrail = rainbowState; if rainbowState then setupRainbowTrail() else if _G.RainbowTrailLoop then _G.RainbowTrailLoop:Disconnect(); _G.RainbowTrailLoop = nil; _G.lastTrailRainbowUpdate = nil end; local h = 0/1000; PlasmaTrails.TrailColor = Color3.fromHSV(h,1,1); if last_ball then Plasma.update_trail_colors(last_ball) end end end)
+rainbowCheck.MouseButton1Click:Connect(function() rainbowState = not rainbowState; rainbowCheckMark.Text = rainbowState and "✓" or ""; rainbowCheckMark.Visible = rainbowState; rainbowCheck.BackgroundColor3 = rainbowState and RedBorder or RedDark; PlasmaTrails.RainbowTrail = rainbowState; if rainbowState then setupRainbowTrail() else if _G.RainbowTrailLoop then _G.RainbowTrailLoop:Disconnect(); _G.RainbowTrailLoop = nil; _G.lastTrailRainbowUpdate = nil end; PlasmaTrails.TrailColor = Color3.fromRGB(255,105,180); if last_ball then Plasma.update_trail_colors(last_ball) end end end)
 PlasmaTrails.TrailColor = Color3.fromRGB(255,105,180); _G.rainbowTrailSpeed = 0.5
-
--- Update CanvasSize
 Content.CanvasSize = UDim2.new(0,0,0,currentOrder*38)
 
--- AUTO SPAM PARRY SYSTEM
-local autoSpamRunning = false; local autoSpamConnection = nil; local lastAutoSpamTime = 0; local autoSpamInterval = 1/875
-
 -- KEYBINDS
+local keyAutoParry = Enum.KeyCode.T
+local keyShowPeak = Enum.KeyCode.E
+local keySpam = Enum.KeyCode.Q
+local keyAutoSpamParry = Enum.KeyCode.Y
+
 UserInputService.InputBegan:Connect(function(input, gp)
-    if gp or waitingForKey then return end
-    if input.KeyCode == keyAutoParry then
-        AutoParry = not AutoParry; parried_balls = {}; notify("Kittylol","Auto Parry: "..(AutoParry and "ON" or "OFF"))
-    elseif input.KeyCode == keyShowPeak then
-        ShowPeak = not ShowPeak; PFrame.Visible = ShowPeak
-    elseif input.KeyCode == keySpam then
-        if ManualSpam then spamActive = not spamActive; SpamToggle.Text = "SPAM: "..(spamActive and "ON" or "OFF"); SpamToggle.BackgroundColor3 = spamActive and RedBorder or RedDark end
-    elseif input.KeyCode == keyAutoSpamParry then
-        AutoSpamParry = not AutoSpamParry; getgenv().animationfix = AutoSpamParry; notify("Kittylol","Auto Spam Parry: "..(AutoSpamParry and "ON" or "OFF"))
-    elseif input.KeyCode == Enum.KeyCode.X then
-        getgenv().AbilityESP = not getgenv().AbilityESP
-        for _, label in pairs(billboardLabels) do if label then label.Visible = getgenv().AbilityESP end end
-        notify("Kittylol","Ability ESP: "..(getgenv().AbilityESP and "ON" or "OFF"))
-    end
+    if gp then return end
+    if input.KeyCode == keyAutoParry then AutoParry = not AutoParry; parried_balls = {}; notify("Kittylol","Auto Parry: "..(AutoParry and "ON" or "OFF"))
+    elseif input.KeyCode == keyShowPeak then ShowPeak = not ShowPeak; PFrame.Visible = ShowPeak
+    elseif input.KeyCode == keySpam then if ManualSpam then spamActive = not spamActive; SpamToggle.Text = "SPAM: "..(spamActive and "ON" or "OFF"); SpamToggle.BackgroundColor3 = spamActive and RedBorder or RedDark end
+    elseif input.KeyCode == keyAutoSpamParry then AutoSpamParry = not AutoSpamParry; getgenv().animationfix = AutoSpamParry; notify("Kittylol","Auto Spam Parry: "..(AutoSpamParry and "ON" or "OFF"))
+    elseif input.KeyCode == Enum.KeyCode.X then getgenv().AbilityESP = not getgenv().AbilityESP; for _, label in pairs(billboardLabels) do if label then label.Visible = getgenv().AbilityESP end end; notify("Kittylol","Ability ESP: "..(getgenv().AbilityESP and "ON" or "OFF")) end
 end)
 
-notify("Kittylol paid","remote loading")
-
+-- FIRE PARRY
 local function fireParry()
     if not (remote and f_raw) then return end
     local cam = workspace.CurrentCamera; local char = LocalPlayer.Character; local camCF = cam.CFrame; local viewportSize = cam.ViewportSize
