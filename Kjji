@@ -7,943 +7,1020 @@ local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StatsService = game:GetService("Stats")
+local VIM = game:GetService("VirtualInputManager")
 
--- Clean old GUI
-local oldGui = game.CoreGui:FindFirstChild("KittylolGui")
-if oldGui then oldGui:Destroy() end
-
--- ===================== REMOTE HOOK =====================
 local remote, f_raw = nil, nil
 local c = {nil, nil, nil, nil, nil, nil, nil}
+local AutoParry, ShowPeak, ManualSpam, AutoSpamParry, BallTrail, AntiLag = false, false, false, false, false, false
+local peakVel = 0
+local spamActive = false
+local lastSpamTime = 0
+local spamInterval = 1/875
 local remoteHooked = false
+local parried_balls = {}
+local billboardLabels = {}
+local last_ball = nil
+local last_ball_id = nil
 
+local keyAutoParry = Enum.KeyCode.T
+local keyShowPeak = Enum.KeyCode.E
+local keySpam = Enum.KeyCode.Q
+local keyAutoSpamParry = Enum.KeyCode.Y
+local waitingForKey = false
+
+getgenv().AbilityESP = false
+
+local originalMaterials = {}
+local originalDecalsTextures = {}
+
+local fakeStreakValue = 0
+local groupEnabled = false
+local icono = "rbxassetid://89658127170771"
+local iconb = "rbxassetid://75598166115655"
+
+-- ======================== EMOTES ========================
+local emotes_data = {"Dance", "Wave", "Point", "Sit", "Laugh", "Clap", "Cheer"}
+local selected_animation = emotes_data[1]
+local animation_system = {
+    current = nil,
+    running = false,
+    start = function() animation_system.running = true end,
+    play = function(anim)
+        if animation_system.current then animation_system.current:Stop() end
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            local track = char.Humanoid:LoadAnimation(Instance.new("Animation"))
+            track.Animation.AnimationId = "rbxassetid://" .. tostring(anim)
+            track:Play()
+            animation_system.current = track
+        end
+    end,
+    cleanup = function()
+        if animation_system.current then animation_system.current:Stop(); animation_system.current = nil end
+        animation_system.running = false
+    end
+}
+
+-- ======================== AUTO JUMP ========================
+getgenv().autojump = false
+local lastJump = 0
+RunService.Heartbeat:Connect(function()
+    if not getgenv().autojump then return end
+    if tick() - lastJump >= 0.6 then
+        local char = game.Players.LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                lastJump = tick()
+            end
+        end
+    end
+end)
+
+-- ======================== COSMETICS ========================
+_G.PlayerCosmeticsCleanup = _G.PlayerCosmeticsCleanup or {}
+local CosmeticsActive = false
+
+local function applyKorblox(character, active)
+    local rightLeg = character:FindFirstChild("RightUpperLeg") or character:FindFirstChild("RightLeg") or character:FindFirstChild("Right Leg")
+    if not rightLeg then return end
+    for _, child in pairs(rightLeg:GetChildren()) do
+        if child:IsA("SpecialMesh") and child.MeshId == "rbxassetid://101851696" then child:Destroy() end
+    end
+    if active then
+        local specialMesh = Instance.new("SpecialMesh")
+        specialMesh.MeshId = "rbxassetid://101851696"
+        specialMesh.TextureId = "rbxassetid://115727863"
+        specialMesh.Scale = Vector3.new(1, 1, 1)
+        specialMesh.Parent = rightLeg
+    end
+end
+
+local function applyCosmetics(char, headlessActive, korbloxActive)
+    if not char then return end
+    task.spawn(function()
+        for i = 1, 10 do
+            local head = char:FindFirstChild("Head")
+            if head then
+                if headlessActive then
+                    head.Transparency = 1
+                    for _, child in pairs(head:GetChildren()) do if child:IsA("Decal") then child.Transparency = 1 end end
+                else
+                    head.Transparency = 0
+                    for _, child in pairs(head:GetChildren()) do if child:IsA("Decal") then child.Transparency = 0 end end
+                end
+            end
+            applyKorblox(char, korbloxActive)
+            if not CosmeticsActive then break end
+            task.wait(0.2)
+        end
+    end)
+end
+
+-- ======================== FLY ========================
+PlayerModules = PlayerModules or {}
+PlayerModules.ModuleFly = PlayerModules.ModuleFly or function(state)
+    getgenv().flying = state
+    local player = game.Players.LocalPlayer
+    local char = player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if state then
+        local bv = Instance.new("BodyVelocity")
+        bv.MaxForce = Vector3.new(10000, 10000, 10000)
+        bv.P = 10000; bv.Velocity = Vector3.new(0, 0, 0); bv.Parent = hrp
+        local bg = Instance.new("BodyGyro")
+        bg.MaxTorque = Vector3.new(10000, 10000, 10000); bg.P = 10000; bg.CFrame = hrp.CFrame; bg.Parent = hrp
+        getgenv().flyConnection = RunService.Heartbeat:Connect(function()
+            if not getgenv().flying then return end
+            local speed = getgenv().FlySpeed or 50; local moveDir = Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + workspace.CurrentCamera.CFrame.LookVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - workspace.CurrentCamera.CFrame.LookVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - workspace.CurrentCamera.CFrame.RightVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + workspace.CurrentCamera.CFrame.RightVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, speed, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, speed, 0) end
+            bv.Velocity = moveDir; bg.CFrame = workspace.CurrentCamera.CFrame
+        end)
+    else
+        if getgenv().flyConnection then getgenv().flyConnection:Disconnect(); getgenv().flyConnection = nil end
+        local bv = hrp:FindFirstChild("BodyVelocity"); local bg = hrp:FindFirstChild("BodyGyro")
+        if bv then bv:Destroy() end; if bg then bg:Destroy() end
+    end
+end
+
+-- ======================== INFINITE JUMP ========================
+getgenv().InfiniteJumpEnabled = false
+
+-- ======================== PLAYER FOLLOW ========================
+local SelectedPlayerFollow = nil
+local lastOptionsString = ""
+local function getPlayerNames()
+    local names = {}
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= LocalPlayer then table.insert(names, player.Name) end
+    end
+    return names
+end
+
+-- ======================== HIT SOUNDS ========================
+local hit_Sound_Enabled = false
+local hit_Sound = Instance.new("Sound", game:GetService("Workspace"))
+hit_Sound.Name = "HitSoundUtility"; hit_Sound.Volume = 5
+
+local hitSoundIds = {
+    Medal = "rbxassetid://6607336718", Fatality = "rbxassetid://6607113255",
+    Skeet = "rbxassetid://6607204501", Switches = "rbxassetid://6607173363",
+    ["Rust Headshot"] = "rbxassetid://138750331387064", ["Neverlose Sound"] = "rbxassetid://110168723447153",
+    Bubble = "rbxassetid://6534947588", Laser = "rbxassetid://7837461331",
+    Steve = "rbxassetid://4965083997", ["Call of Duty"] = "rbxassetid://5952120301",
+    Bat = "rbxassetid://3333907347", ["TF2 Critical"] = "rbxassetid://296102734",
+    Saber = "rbxassetid://8415678813", Bameware = "rbxassetid://3124331820",
+}
+
+game:GetService("ReplicatedStorage").Remotes.ParrySuccess.OnClientEvent:Connect(function()
+    if hit_Sound_Enabled then hit_Sound:Play() end
+end)
+
+-- ======================== AVATAR CHANGER ========================
+local __flags = {}
+local __players = game:GetService('Players')
+local __localplayer = __players.LocalPlayer
+local function __apparence(__name)
+    local s, e = pcall(function()
+        local __id = __players:GetUserIdFromNameAsync(__name)
+        return __players:GetHumanoidDescriptionFromUserId(__id)
+    end)
+    return s and e or nil
+end
+local function __set(__name, __char)
+    if not __name or __name == '' then return end
+    local __hum = __char and __char:WaitForChild('Humanoid', 5)
+    if not __hum then return end
+    local __desc = __apparence(__name)
+    if not __desc then return end
+    __localplayer:ClearCharacterAppearance()
+    __hum:ApplyDescriptionClientServer(__desc)
+end
+
+-- ======================== GIF FRAMES ========================
+local gifFrames = {
+    "rbxassetid://119074790388219", "rbxassetid://115672794096960",
+    "rbxassetid://71738870122726", "rbxassetid://118412167563569",
+    "rbxassetid://137807993707113", "rbxassetid://88762654041910",
+    "rbxassetid://129594193999212", "rbxassetid://93903492440603",
+    "rbxassetid://137536008841598",
+}
+
+local colors = {
+    Border = Color3.fromRGB(255, 20, 147), Light = Color3.fromRGB(255, 105, 180),
+    Dark = Color3.fromRGB(150, 10, 80), Pale = Color3.fromRGB(80, 20, 40),
+    BgTrans = Color3.fromRGB(40, 10, 20), Text = Color3.fromRGB(255, 182, 193),
+    Sub = Color3.fromRGB(200, 130, 150), WhiteBg = Color3.fromRGB(255, 200, 210),
+}
+
+local RedBorder = colors.Border; local RedLight = colors.Light; local RedDark = colors.Dark
+local RedPale = colors.Pale; local WhiteBg = colors.WhiteBg; local TextRed = colors.Text
+local TextSub = colors.Sub; local BgTrans = colors.BgTrans
+
+-- ======================== REMOTE HOOK ========================
 local mt = getrawmetatable(game)
-local old_idx = mt.__index
+local old = mt.__index
 setreadonly(mt, false)
 mt.__index = newcclosure(function(self, key)
     if key == "FireServer" or key == "InvokeServer" then
         return function(instance, ...)
             local args = {...}
-            if #args >= 4 and not remoteHooked then
-                remoteHooked = true
-                remote = instance
-                f_raw = old_idx(instance, "FireServer")
+            if #args >= 4 then
+                if not remoteHooked then remoteHooked = true end
+                remote = instance; f_raw = old(instance, "FireServer")
                 for i = 1, 7 do c[i] = args[i] end
             end
-            return old_idx(self, key)(instance, ...)
+            return old(self, key)(instance, ...)
         end
     end
-    return old_idx(self, key)
+    return old(self, key)
 end)
 setreadonly(mt, true)
 
--- ===================== FIRE PARRY =====================
-local function fireParry()
-    if not (remote and f_raw) then return end
-    local cam = workspace.CurrentCamera
-    local char = LocalPlayer.Character
-    local viewport = cam.ViewportSize
-    local mousePos = {viewport.X / 2, viewport.Y / 2}
-    local events = {}
-    if workspace:FindFirstChild("Alive") then
-        for _, v in ipairs(workspace.Alive:GetChildren()) do
-            if v ~= char and v.PrimaryPart then
-                local pos, onScreen = cam:WorldToScreenPoint(v.PrimaryPart.Position)
-                if onScreen then events[tostring(v)] = pos end
+-- ======================== SCREEN GUI ========================
+local oldGui = game.CoreGui:FindFirstChild("KittylolGui")
+if oldGui then oldGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+ScreenGui.Name = "KittylolGui"
+ScreenGui.ResetOnSpawn = false
+
+-- ======================== NOTIFICATIONS ========================
+local notifyQueue = {}; local notifyActive = false
+local function processQueue()
+    if notifyActive or #notifyQueue == 0 then return end
+    notifyActive = true; local item = table.remove(notifyQueue, 1)
+    local frame = Instance.new("Frame", ScreenGui)
+    frame.Size = UDim2.new(0, 230, 0, 55); frame.Position = UDim2.new(1, 10, 1, -70)
+    frame.BackgroundColor3 = RedPale; frame.BackgroundTransparency = 0.3; frame.BorderSizePixel = 0; frame.ZIndex = 10
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+    local fstr = Instance.new("UIStroke", frame); fstr.Color = RedBorder; fstr.Thickness = 2
+    local t = Instance.new("TextLabel", frame)
+    t.Size = UDim2.new(1, -12, 0, 22); t.Position = UDim2.new(0, 10, 0, 5)
+    t.BackgroundTransparency = 1; t.Font = Enum.Font.GothamBold; t.TextSize = 13
+    t.TextColor3 = TextRed; t.TextXAlignment = Enum.TextXAlignment.Left; t.Text = item.title; t.ZIndex = 11
+    local m = Instance.new("TextLabel", frame)
+    m.Size = UDim2.new(1, -12, 0, 18); m.Position = UDim2.new(0, 10, 0, 28)
+    m.BackgroundTransparency = 1; m.Font = Enum.Font.Gotham; m.TextSize = 11
+    m.TextColor3 = TextSub; m.TextXAlignment = Enum.TextXAlignment.Left; m.Text = item.msg; m.ZIndex = 11
+    TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(1, -240, 1, -70)}):Play()
+    task.delay(3, function()
+        TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(1, 10, 1, -70)}):Play()
+        task.delay(0.35, function() frame:Destroy(); notifyActive = false; processQueue() end)
+    end)
+end
+local function notify(title, msg)
+    table.insert(notifyQueue, {title = title, msg = msg}); processQueue()
+end
+
+task.spawn(function()
+    while not remoteHooked do task.wait(0.1) end
+    notify("Kittylol paid", "remote hooked ✅")
+end)
+
+-- ======================== ABILITY ESP ========================
+local function createBillboardGui(p)
+    local character = p.Character
+    while not character or not character.Parent do task.wait(); character = p.Character end
+    local head = character:WaitForChild("Head")
+    local bg = Instance.new("BillboardGui"); bg.Name = "AbilityESP_Gui"; bg.Adornee = head
+    bg.Size = UDim2.new(0, 200, 0, 50); bg.StudsOffset = Vector3.new(0, 3, 0); bg.AlwaysOnTop = true; bg.Parent = head
+    local tl = Instance.new("TextLabel"); tl.Size = UDim2.new(1, 0, 1, 0); tl.TextColor3 = TextRed
+    tl.TextSize = 8; tl.TextStrokeTransparency = 0; tl.BackgroundTransparency = 1; tl.Parent = bg
+    tl.Visible = getgenv().AbilityESP; billboardLabels[p] = tl
+    local humanoid = character:FindFirstChild("Humanoid")
+    if humanoid then humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end
+    local conn = RunService.Heartbeat:Connect(function()
+        if not (character and character.Parent) then conn:Disconnect(); bg:Destroy(); billboardLabels[p] = nil; return end
+        tl.Visible = getgenv().AbilityESP
+        if getgenv().AbilityESP then
+            local ability = p:GetAttribute("EquippedAbility")
+            tl.Text = ability and (p.DisplayName .. " [" .. ability .. "]") or p.DisplayName
+        end
+    end)
+end
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then
+        p.CharacterAdded:Connect(function() createBillboardGui(p) end)
+        if p.Character then task.spawn(createBillboardGui, p) end
+    end
+end
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function() createBillboardGui(p) end)
+end)
+
+-- ======================== DRAGGABLE ========================
+local function makeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging, dragInput, dragStart, startPos
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = input.Position; startPos = frame.Position
+            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+        end
+    end)
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- ======================== ANTI LAG ========================
+local function applyAntiLag(state)
+    if state then
+        for _, O in ipairs(workspace:GetDescendants()) do
+            if O:IsA("BasePart") and not (O:FindFirstAncestorWhichIsA("Model") and O:FindFirstAncestorWhichIsA("Model"):FindFirstChild("Humanoid")) then
+                originalMaterials[O] = O.Material; O.Material = Enum.Material.SmoothPlastic
+            elseif O:IsA("Decal") or O:IsA("Texture") then
+                table.insert(originalDecalsTextures, {Object = O, Parent = O.Parent}); O.Parent = nil
+            elseif O:IsA("ParticleEmitter") or O:IsA("Smoke") or O:IsA("Fire") or O:IsA("Sparkles") then O.Enabled = false end
+        end
+    else
+        for O, mat in pairs(originalMaterials) do if O and O.Parent then pcall(function() O.Material = mat end) end end
+        for _, d in pairs(originalDecalsTextures) do if d.Object and d.Parent then pcall(function() d.Object.Parent = d.Parent end) end end
+        originalMaterials = {}; originalDecalsTextures = {}
+    end
+end
+
+-- ======================== FAKE WIN STREAK ========================
+local function formatNumber(num)
+    local formatted = tostring(num)
+    while true do
+        local k; formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1,%2')
+        if (k == 0) then break end
+    end
+    return formatted
+end
+local function getIconImage(num) return num >= 10 and iconb or icono end
+local function getDisplay()
+    local folders = {"Dead", "Alive"}
+    for _, folderName in ipairs(folders) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then
+            local char = folder:FindFirstChild(LocalPlayer.Name)
+            if char then
+                local display = char:FindFirstChild("WinStreakDisplay")
+                if display then return char, display end
             end
         end
     end
-    c[3] = cam.CFrame.LookVector
-    c[4] = cam.CFrame
-    c[5] = events
-    c[6] = mousePos
-    pcall(function() f_raw(remote, unpack(c)) end)
+    return nil, nil
+end
+local function clearFake()
+    local char, display = getDisplay()
+    if char then local old = char:FindFirstChild("FakeStreakBillboard"); if old then old:Destroy() end end
+    if display then display.Enabled = true end
+end
+local function applyFake(num)
+    if not groupEnabled or num < 1 then clearFake(); return end
+    local char, display = getDisplay()
+    if not char or not display then return end
+    local head = display.Adornee or char:FindFirstChild("Head")
+    if not head then return end
+    display.Enabled = false
+    local old = char:FindFirstChild("FakeStreakBillboard"); if old then old:Destroy() end
+    local bb = Instance.new("BillboardGui"); bb.Name = "FakeStreakBillboard"; bb.Adornee = head
+    bb.AlwaysOnTop = true; bb.Size = UDim2.new(5, 0, 1.5, 0); bb.StudsOffsetWorldSpace = Vector3.new(0, 2, 0)
+    bb.MaxDistance = 120; bb.Parent = char
+    local main = Instance.new("Frame", bb); main.Name = "Main"; main.BackgroundTransparency = 1
+    main.Size = UDim2.new(0.9, 0, 0.75, 0); main.Position = UDim2.new(0.5, 0, 1, 0); main.AnchorPoint = Vector2.new(0.5, 1)
+    local icon = Instance.new("ImageLabel", main); icon.Name = "Icon"; icon.BackgroundTransparency = 1
+    icon.Size = UDim2.new(1.25, 0, 1.25, 0); icon.Position = UDim2.new(0.5, 0, 0.9, 0); icon.AnchorPoint = Vector2.new(0.5, 1)
+    icon.Image = getIconImage(num); icon.ZIndex = 1; Instance.new("UIAspectRatioConstraint", icon)
+    local label = Instance.new("TextLabel", main); label.Name = "Value"; label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1.5, 0, 0.8, 0); label.Position = UDim2.new(0.5, 0, 0.9, 0); label.AnchorPoint = Vector2.new(0.5, 1)
+    label.Font = Enum.Font.SourceSansBold; label.TextScaled = true; label.TextColor3 = Color3.new(0.9, 0.9, 0.9)
+    label.RichText = true; label.ZIndex = 2; label.Text = "<b><stroke color='rgb(0, 0, 0)' thickness='2'>" .. formatNumber(num) .. "</stroke></b>"
+    local padding = Instance.new("UIPadding", label); padding.PaddingTop = UDim.new(0.03, 0); padding.PaddingBottom = UDim.new(0.03, 0)
+    padding.PaddingLeft = UDim.new(0.03, 0); padding.PaddingRight = UDim.new(0.03, 0)
+    Instance.new("UIAspectRatioConstraint", label)
 end
 
--- ===================== VARIABLES =====================
-local AutoParry = false
-local ShowPeak = false
-local ManualSpam = false
-local AutoSpamParry = false
-local AntiLag = false
-local peakVel = 0
-local spamActive = false
-local lastSpamTime = 0
-local spamInterval = 1/875
-local parried_balls = {}
-local last_ball = nil
-local billboardLabels = {}
-
-getgenv().AbilityESP = false
-
--- Anti Lag
-local originalMaterials = {}
-local originalDecalsTextures = {}
-
--- Fake Win Streak
-local groupEnabled = false
-local fakeStreakValue = 100
-local icono = "rbxassetid://89658127170771"
-local iconb = "rbxassetid://75598166115655"
-
--- ===================== IMMORTALITY =====================
-local Immortality = {
-    Enabled = false,
-    DesyncRadius = 40,
-    DesyncHeight = 50
-}
-
-local desyncCFrames = {}
-local currentDesyncRot = 0
-
-local function randomVec(mag)
-    return math.random(-mag * 90000009292929399949949496000, mag * -1e9) / 5e8
+-- ======================== BALL TRAIL ========================
+local PlasmaTrails = {Enabled = false, NumTrails = 10, TrailColor = Color3.fromRGB(255, 105, 180), RainbowTrail = false, RainbowSpeed = 0.5}
+_G.RainbowTrailLoop = nil; _G.lastTrailRainbowUpdate = nil; _G.rainbowTrailSpeed = 0.5
+local Plasma = {trail_containers = {}, trail_parts = {}}
+function Plasma.cleanup_trails(ball)
+    if not ball then return end
+    local container = Plasma.trail_containers[ball]
+    if container then
+        for _, part in ipairs(container:GetChildren()) do if part:IsA("Part") or part:IsA("Attachment") then part:Destroy() end end
+        container:Destroy(); Plasma.trail_containers[ball] = nil
+    end; Plasma.trail_parts[ball] = nil
+end
+function Plasma.create_trails(ball)
+    if not ball then return end; Plasma.cleanup_trails(ball)
+    local container = Instance.new("Folder"); container.Name = "BallTrails_" .. ball.Name; container.Parent = ball
+    Plasma.trail_containers[ball] = container; local trailParts = {}
+    for i = 1, PlasmaTrails.NumTrails do
+        local trail = Instance.new("Part"); trail.Size = Vector3.new(0.5, 0.5, 0.5); trail.Shape = Enum.PartType.Ball
+        trail.Material = Enum.Material.Neon; trail.Color = PlasmaTrails.TrailColor
+        trail.Transparency = 0.2 + (i / PlasmaTrails.NumTrails) * 0.6; trail.Anchored = true; trail.CanCollide = false; trail.Parent = container
+        local att = Instance.new("Attachment", trail); att.Name = "BallAttach"
+        table.insert(trailParts, {part = trail, offset = i * 0.3})
+    end; Plasma.trail_parts[ball] = trailParts
+end
+function Plasma.update_trail_colors(ball)
+    if not ball or not Plasma.trail_parts[ball] then return end
+    for _, tp in ipairs(Plasma.trail_parts[ball]) do tp.part.Color = PlasmaTrails.TrailColor end
+end
+local trailConnection = RunService.Heartbeat:Connect(function()
+    if not PlasmaTrails.Enabled then return end
+    local ballContainer = workspace:FindFirstChild("Balls"); local ball = ballContainer and ballContainer:GetChildren()[1]
+    if ball and ball:IsA("BasePart") then
+        if ball ~= last_ball then if last_ball then Plasma.cleanup_trails(last_ball) end; last_ball = ball; Plasma.create_trails(ball) end
+        local trailParts = Plasma.trail_parts[ball]
+        if trailParts then
+            local vel = ball.Velocity; local pos = ball.Position
+            for _, tp in ipairs(trailParts) do tp.part.CFrame = CFrame.new(pos - (vel * tp.offset)) end
+        end
+    elseif last_ball then Plasma.cleanup_trails(last_ball); last_ball = nil end
+end)
+local function setupRainbowTrail()
+    if _G.RainbowTrailLoop then _G.RainbowTrailLoop:Disconnect(); _G.RainbowTrailLoop = nil end
+    if PlasmaTrails.RainbowTrail then
+        _G.RainbowTrailLoop = RunService.Heartbeat:Connect(function()
+            local now = tick()
+            if not _G.lastTrailRainbowUpdate or now - _G.lastTrailRainbowUpdate > 0.1 then
+                local t = os.clock(); local speed = _G.rainbowTrailSpeed or 0.4
+                local c = Color3.fromHSV((t * speed) % 1, 1, 1); PlasmaTrails.TrailColor = c
+                if last_ball then Plasma.update_trail_colors(last_ball) end; _G.lastTrailRainbowUpdate = now
+            end
+        end)
+    end
 end
 
--- Keep setting network owner
+-- ======================== BALL STATS ========================
+local PFrame = Instance.new("Frame", ScreenGui)
+PFrame.Size = UDim2.new(0, 260, 0, 40); PFrame.Position = UDim2.new(0.5, -130, 0.02, 0)
+PFrame.BackgroundColor3 = RedPale; PFrame.BackgroundTransparency = 0.3; PFrame.BorderSizePixel = 0; PFrame.Visible = false
+Instance.new("UICorner", PFrame).CornerRadius = UDim.new(0, 14)
+local PS = Instance.new("UIStroke", PFrame); PS.Color = RedBorder; PS.Thickness = 2
+local PTitle = Instance.new("TextLabel", PFrame); PTitle.Size = UDim2.new(0, 60, 1, 0); PTitle.Position = UDim2.new(0.06, 0, 0, 0)
+PTitle.Text = "BALL STATS"; PTitle.TextColor3 = RedBorder; PTitle.BackgroundTransparency = 1
+PTitle.Font = Enum.Font.GothamBold; PTitle.TextSize = 10; PTitle.TextXAlignment = Enum.TextXAlignment.Left
+local VLabel = Instance.new("TextLabel", PFrame); VLabel.Position = UDim2.new(0, 95, 0, 2); VLabel.Size = UDim2.new(0, 65, 0, 14)
+VLabel.Text = "Cur: 0.0"; VLabel.TextColor3 = TextRed; VLabel.BackgroundTransparency = 1
+VLabel.Font = Enum.Font.GothamBold; VLabel.TextSize = 12; VLabel.TextXAlignment = Enum.TextXAlignment.Left
+local PLabel = Instance.new("TextLabel", PFrame); PLabel.Position = UDim2.new(0, 95, 0, 20); PLabel.Size = UDim2.new(0, 65, 0, 14)
+PLabel.Text = "Peak: 0.0"; PLabel.TextColor3 = Color3.fromRGB(50, 220, 80); PLabel.BackgroundTransparency = 1
+PLabel.Font = Enum.Font.GothamBold; PLabel.TextSize = 12; PLabel.TextXAlignment = Enum.TextXAlignment.Left
+makeDraggable(PFrame, PTitle)
+
+-- ======================== MANUAL SPAM PANEL ========================
+local SpamPanel = Instance.new("Frame", ScreenGui)
+SpamPanel.Size = UDim2.new(0, 145, 0, 50); SpamPanel.Position = UDim2.new(0.5, -72, 1, -80)
+SpamPanel.BackgroundColor3 = RedPale; SpamPanel.BackgroundTransparency = 0.3; SpamPanel.BorderSizePixel = 0; SpamPanel.Visible = false
+Instance.new("UICorner", SpamPanel).CornerRadius = UDim.new(0, 12)
+local SpamStroke = Instance.new("UIStroke", SpamPanel); SpamStroke.Color = RedBorder; SpamStroke.Thickness = 2
+local SpamTitle = Instance.new("TextLabel", SpamPanel); SpamTitle.Size = UDim2.new(1, 0, 0, 24); SpamTitle.Text = "Manual Spam"
+SpamTitle.TextColor3 = RedBorder; SpamTitle.BackgroundTransparency = 1; SpamTitle.Font = Enum.Font.GothamBold
+SpamTitle.TextSize = 11; SpamTitle.TextXAlignment = Enum.TextXAlignment.Center
+local SpamToggle = Instance.new("TextButton", SpamPanel); SpamToggle.Size = UDim2.new(0.85, 0, 0, 26)
+SpamToggle.Position = UDim2.new(0.075, 0, 0, 22); SpamToggle.Text = "SPAM: OFF"; SpamToggle.BackgroundColor3 = RedDark
+SpamToggle.TextColor3 = WhiteBg; SpamToggle.Font = Enum.Font.GothamBold; SpamToggle.TextSize = 13; SpamToggle.BorderSizePixel = 0
+Instance.new("UICorner", SpamToggle).CornerRadius = UDim.new(0, 8)
+SpamToggle.MouseButton1Click:Connect(function()
+    spamActive = not spamActive; SpamToggle.Text = "SPAM: " .. (spamActive and "ON" or "OFF")
+    SpamToggle.BackgroundColor3 = spamActive and RedBorder or RedDark
+end)
+makeDraggable(SpamPanel, SpamTitle)
+
+-- ======================== IMMORTALITY ========================
+local Immortality = {Enabled = false, DesyncRadius = 40, DesyncHeight = 50}
+local desyncCFramePositions = {}; local currentDesyncRotation = 0
+local function GenerateRandomVector(magnitude)
+    return math.random(-magnitude * 90000009292929399949949496000, magnitude * -1e9) / 5e8
+end
+
 task.spawn(function()
     while true do
         if Immortality.Enabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            pcall(function()
-                LocalPlayer.Character.HumanoidRootPart:SetNetworkOwner(LocalPlayer)
-            end)
-        end
-        task.wait()
+            pcall(function() LocalPlayer.Character.HumanoidRootPart:SetNetworkOwner(LocalPlayer) end)
+        end; task.wait()
     end
 end)
 
 RunService.Stepped:Connect(function()
     if Immortality.Enabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        pcall(function()
-            LocalPlayer.Character.HumanoidRootPart:SetNetworkOwner(LocalPlayer)
-        end)
+        pcall(function() LocalPlayer.Character.HumanoidRootPart:SetNetworkOwner(LocalPlayer) end)
     end
 end)
 
--- Desync loop
 RunService.Heartbeat:Connect(function()
     if Immortality.Enabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local root = LocalPlayer.Character.HumanoidRootPart
-        currentDesyncRot = (currentDesyncRot + 15) % 360
-        desyncCFrames[1] = root.CFrame
-        desyncCFrames[2] = root.AssemblyLinearVelocity
-        
-        local force = 3000
-        local spoofed = root.CFrame * CFrame.Angles(0, math.rad(currentDesyncRot), 0) + Vector3.new(0, Immortality.DesyncHeight, 0)
-        local hWave = math.sin(tick() * 30) * Immortality.DesyncRadius
-        local vWave = math.cos(tick() * 60) * Immortality.DesyncHeight
-        spoofed = spoofed * CFrame.new(hWave, vWave, 0) * CFrame.Angles(
-            math.rad(randomVec(force)), math.rad(randomVec(force)), 0
-        )
-        root.CFrame = spoofed
-        root.AssemblyLinearVelocity = desyncCFrames[2] + Vector3.new(
-            math.cos(tick() * 8) * force, math.cos(tick() * 8) * force, 0
-        )
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        currentDesyncRotation = (currentDesyncRotation + 15) % 360
+        desyncCFramePositions[1] = rootPart.CFrame; desyncCFramePositions[2] = rootPart.AssemblyLinearVelocity
+        local desyncForce = 3000
+        local spoofedCF = rootPart.CFrame * CFrame.Angles(0, math.rad(currentDesyncRotation), 0) + Vector3.new(0, Immortality.DesyncHeight, 0)
+        local hWave = math.sin(tick() * 30) * Immortality.DesyncRadius; local vWave = math.cos(tick() * 60) * Immortality.DesyncHeight
+        spoofedCF = spoofedCF * CFrame.new(hWave, vWave, 0) * CFrame.Angles(math.rad(GenerateRandomVector(desyncForce)), math.rad(GenerateRandomVector(desyncForce)), 0)
+        rootPart.CFrame = spoofedCF; rootPart.AssemblyLinearVelocity = desyncCFramePositions[2] + Vector3.new(math.cos(tick() * 8) * desyncForce, math.cos(tick() * 8) * desyncForce, 0)
         RunService.RenderStepped:Wait()
-        root.CFrame = desyncCFrames[1]
-        root.AssemblyLinearVelocity = desyncCFrames[2]
+        rootPart.CFrame = desyncCFramePositions[1]; rootPart.AssemblyLinearVelocity = desyncCFramePositions[2]
     end
 end)
 
--- Hook __index to spoof CFrame reads
-local origIndex
-origIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+local originalCFrameIndex
+originalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if Immortality.Enabled and not checkcaller() then
         if key == "CFrame" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            if self == LocalPlayer.Character.HumanoidRootPart then
-                return desyncCFrames[1] or CFrame.new()
+            if self == LocalPlayer.Character.HumanoidRootPart then return desyncCFramePositions[1] or CFrame.new()
             elseif self == LocalPlayer.Character:FindFirstChild("Head") then
-                return desyncCFrames[1] and desyncCFrames[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
+                return desyncCFramePositions[1] and desyncCFramePositions[1] + Vector3.new(0, LocalPlayer.Character.HumanoidRootPart.Size.Y / 2 + 0.5, 0) or CFrame.new()
             end
         end
-    end
-    return origIndex(self, key)
+    end; return originalCFrameIndex(self, key)
 end))
 
--- BALL TRAIL
-local PlasmaTrails = {
-    Enabled = false, NumTrails = 10,
-    TrailColor = Color3.fromRGB(255, 105, 180),
-    RainbowTrail = false, RainbowSpeed = 0.5
-}
-_G.rainbowTrailSpeed = 0.5
-
--- ===================== COLORS =====================
-local C = {
-    Border = Color3.fromRGB(255, 20, 147),
-    Dark = Color3.fromRGB(150, 10, 80),
-    Pale = Color3.fromRGB(80, 20, 40),
-    Text = Color3.fromRGB(255, 182, 193),
-    Sub = Color3.fromRGB(200, 130, 150),
-    White = Color3.fromRGB(255, 200, 210),
-}
-
--- ===================== MAIN GUI =====================
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-ScreenGui.Name = "KittylolGui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
--- Notification system
-local notifyQ, notifyActive = {}, false
-local function notify(title, msg)
-    if notifyActive then table.insert(notifyQ, {title, msg}) return end
-    notifyActive = true
-    local f = Instance.new("Frame", ScreenGui)
-    f.Size = UDim2.new(0, 230, 0, 55)
-    f.Position = UDim2.new(1, 10, 1, -70)
-    f.BackgroundColor3 = C.Pale
-    f.BackgroundTransparency = 0.3
-    f.BorderSizePixel = 0
-    f.ZIndex = 100
-    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 12)
-    local s = Instance.new("UIStroke", f)
-    s.Color = C.Border; s.Thickness = 2
-    local t = Instance.new("TextLabel", f)
-    t.Size = UDim2.new(1, -12, 0, 22)
-    t.Position = UDim2.new(0, 10, 0, 5)
-    t.BackgroundTransparency = 1
-    t.Font = Enum.Font.GothamBold; t.TextSize = 13
-    t.TextColor3 = C.Text; t.TextXAlignment = Enum.TextXAlignment.Left
-    t.Text = title; t.ZIndex = 101
-    local m = Instance.new("TextLabel", f)
-    m.Size = UDim2.new(1, -12, 0, 18)
-    m.Position = UDim2.new(0, 10, 0, 28)
-    m.BackgroundTransparency = 1
-    m.Font = Enum.Font.Gotham; m.TextSize = 11
-    m.TextColor3 = C.Sub; m.TextXAlignment = Enum.TextXAlignment.Left
-    m.Text = msg; m.ZIndex = 101
-    TweenService:Create(f, TweenInfo.new(0.3), {Position = UDim2.new(1, -240, 1, -70)}):Play()
-    task.delay(3, function()
-        TweenService:Create(f, TweenInfo.new(0.3), {Position = UDim2.new(1, 10, 1, -70)}):Play()
-        task.delay(0.35, function()
-            f:Destroy()
-            notifyActive = false
-            if #notifyQ > 0 then
-                local n = table.remove(notifyQ, 1)
-                notify(n[1], n[2])
-            end
-        end)
-    end)
-end
-
-local function makeDraggable(frame, handle)
-    handle = handle or frame
-    local drag, dIn, dSt, sP
-    handle.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            drag = true; dSt = i.Position; sP = frame.Position
-            i.Changed:Connect(function()
-                if i.UserInputState == Enum.UserInputState.End then drag = false end
-            end)
-        end
-    end)
-    handle.InputChanged:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseMovement then dIn = i end
-    end)
-    UserInputService.InputChanged:Connect(function(i)
-        if i == dIn and drag then
-            local d = i.Position - dSt
-            frame.Position = UDim2.new(sP.X.Scale, sP.X.Offset + d.X, sP.Y.Scale, sP.Y.Offset + d.Y)
-        end
-    end)
-end
-
--- ===================== BALL STATS PANEL =====================
-local PFrame = Instance.new("Frame", ScreenGui)
-PFrame.Size = UDim2.new(0, 260, 0, 40)
-PFrame.Position = UDim2.new(0.5, -130, 0.02, 0)
-PFrame.BackgroundColor3 = C.Pale
-PFrame.BackgroundTransparency = 0.3
-PFrame.BorderSizePixel = 0
-PFrame.Visible = false
-PFrame.ZIndex = 5
-Instance.new("UICorner", PFrame).CornerRadius = UDim.new(0, 14)
-local PS = Instance.new("UIStroke", PFrame)
-PS.Color = C.Border; PS.Thickness = 2
-
-local PTitle = Instance.new("TextLabel", PFrame)
-PTitle.Size = UDim2.new(0, 60, 1, 0)
-PTitle.Position = UDim2.new(0.06, 0, 0, 0)
-PTitle.Text = "BALL STATS"
-PTitle.TextColor3 = C.Border
-PTitle.BackgroundTransparency = 1
-PTitle.Font = Enum.Font.GothamBold
-PTitle.TextSize = 10
-PTitle.TextXAlignment = Enum.TextXAlignment.Left
-makeDraggable(PFrame, PTitle)
-
-local VLabel = Instance.new("TextLabel", PFrame)
-VLabel.Position = UDim2.new(0, 95, 0, 2)
-VLabel.Size = UDim2.new(0, 65, 0, 14)
-VLabel.Text = "Cur: 0.0"
-VLabel.TextColor3 = C.Text
-VLabel.BackgroundTransparency = 1
-VLabel.Font = Enum.Font.GothamBold
-VLabel.TextSize = 12
-VLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local PLabel = Instance.new("TextLabel", PFrame)
-PLabel.Position = UDim2.new(0, 95, 0, 20)
-PLabel.Size = UDim2.new(0, 65, 0, 14)
-PLabel.Text = "Peak: 0.0"
-PLabel.TextColor3 = Color3.fromRGB(50, 220, 80)
-PLabel.BackgroundTransparency = 1
-PLabel.Font = Enum.Font.GothamBold
-PLabel.TextSize = 12
-PLabel.TextXAlignment = Enum.TextXAlignment.Left
-
--- ===================== MANUAL SPAM PANEL =====================
-local SpamPanel = Instance.new("Frame", ScreenGui)
-SpamPanel.Size = UDim2.new(0, 145, 0, 50)
-SpamPanel.Position = UDim2.new(0.5, -72, 1, -80)
-SpamPanel.BackgroundColor3 = C.Pale
-SpamPanel.BackgroundTransparency = 0.3
-SpamPanel.BorderSizePixel = 0
-SpamPanel.Visible = false
-SpamPanel.ZIndex = 5
-Instance.new("UICorner", SpamPanel).CornerRadius = UDim.new(0, 12)
-local SS = Instance.new("UIStroke", SpamPanel)
-SS.Color = C.Border; SS.Thickness = 2
-
-local SpamTitle = Instance.new("TextLabel", SpamPanel)
-SpamTitle.Size = UDim2.new(1, 0, 0, 24)
-SpamTitle.Text = "Manual Spam"
-SpamTitle.TextColor3 = C.Border
-SpamTitle.BackgroundTransparency = 1
-SpamTitle.Font = Enum.Font.GothamBold
-SpamTitle.TextSize = 11
-SpamTitle.TextXAlignment = Enum.TextXAlignment.Center
-makeDraggable(SpamPanel, SpamTitle)
-
-local SpamToggle = Instance.new("TextButton", SpamPanel)
-SpamToggle.Size = UDim2.new(0.85, 0, 0, 26)
-SpamToggle.Position = UDim2.new(0.075, 0, 0, 22)
-SpamToggle.Text = "SPAM: OFF"
-SpamToggle.BackgroundColor3 = C.Dark
-SpamToggle.TextColor3 = C.White
-SpamToggle.Font = Enum.Font.GothamBold
-SpamToggle.TextSize = 13
-SpamToggle.BorderSizePixel = 0
-Instance.new("UICorner", SpamToggle).CornerRadius = UDim.new(0, 8)
-SpamToggle.MouseButton1Click:Connect(function()
-    spamActive = not spamActive
-    SpamToggle.Text = "SPAM: " .. (spamActive and "ON" or "OFF")
-    SpamToggle.BackgroundColor3 = spamActive and C.Border or C.Dark
-end)
-
--- ===================== IMMORTALITY PANEL =====================
+-- Immortality GUI Panel
 local ImmPanel = Instance.new("Frame", ScreenGui)
-ImmPanel.Size = UDim2.new(0, 180, 0, 80)
-ImmPanel.Position = UDim2.new(0.5, -90, 0.1, 0)
-ImmPanel.BackgroundColor3 = C.Pale
-ImmPanel.BackgroundTransparency = 0.3
-ImmPanel.BorderSizePixel = 0
-ImmPanel.Visible = false
-ImmPanel.ZIndex = 5
+ImmPanel.Size = UDim2.new(0, 180, 0, 80); ImmPanel.Position = UDim2.new(0.5, -90, 0.1, 0)
+ImmPanel.BackgroundColor3 = RedPale; ImmPanel.BackgroundTransparency = 0.3; ImmPanel.BorderSizePixel = 0; ImmPanel.Visible = false
 Instance.new("UICorner", ImmPanel).CornerRadius = UDim.new(0, 12)
-local ImmS = Instance.new("UIStroke", ImmPanel)
-ImmS.Color = C.Border; ImmS.Thickness = 2
-
-local ImmTitle = Instance.new("TextLabel", ImmPanel)
-ImmTitle.Size = UDim2.new(1, 0, 0, 24)
-ImmTitle.Text = "Immortality"
-ImmTitle.TextColor3 = C.Border
-ImmTitle.BackgroundTransparency = 1
-ImmTitle.Font = Enum.Font.GothamBold
-ImmTitle.TextSize = 11
-ImmTitle.TextXAlignment = Enum.TextXAlignment.Center
+local ImmStroke = Instance.new("UIStroke", ImmPanel); ImmStroke.Color = RedBorder; ImmStroke.Thickness = 2
+local ImmTitle = Instance.new("TextLabel", ImmPanel); ImmTitle.Size = UDim2.new(1, 0, 0, 24); ImmTitle.Text = "Immortality"
+ImmTitle.TextColor3 = RedBorder; ImmTitle.BackgroundTransparency = 1; ImmTitle.Font = Enum.Font.GothamBold; ImmTitle.TextSize = 11; ImmTitle.TextXAlignment = Enum.TextXAlignment.Center
+local ImmToggle = Instance.new("TextButton", ImmPanel); ImmToggle.Size = UDim2.new(0.7, 0, 0, 24)
+ImmToggle.Position = UDim2.new(0.15, 0, 0, 22); ImmToggle.Text = "IMM: OFF"; ImmToggle.BackgroundColor3 = RedDark
+ImmToggle.TextColor3 = WhiteBg; ImmToggle.Font = Enum.Font.GothamBold; ImmToggle.TextSize = 13; ImmToggle.BorderSizePixel = 0
+Instance.new("UICorner", ImmToggle).CornerRadius = UDim.new(0, 8)
+local immortalityActive = false
+ImmToggle.MouseButton1Click:Connect(function()
+    immortalityActive = not immortalityActive; Immortality.Enabled = immortalityActive
+    ImmToggle.Text = immortalityActive and "IMM: ON" or "IMM: OFF"; ImmToggle.BackgroundColor3 = immortalityActive and RedBorder or RedDark
+    notify("Kittylol", "Immortality: " .. (immortalityActive and "ON" or "OFF"))
+end)
+local ImmRadiusBox = Instance.new("TextBox", ImmPanel); ImmRadiusBox.Size = UDim2.new(0.4, 0, 0, 22)
+ImmRadiusBox.Position = UDim2.new(0.05, 0, 0, 52); ImmRadiusBox.BackgroundColor3 = RedDark; ImmRadiusBox.TextColor3 = WhiteBg
+ImmRadiusBox.PlaceholderColor3 = TextSub; ImmRadiusBox.Font = Enum.Font.Gotham; ImmRadiusBox.TextSize = 11
+ImmRadiusBox.PlaceholderText = "Radius"; ImmRadiusBox.BorderSizePixel = 0; ImmRadiusBox.Text = tostring(Immortality.DesyncRadius)
+Instance.new("UICorner", ImmRadiusBox).CornerRadius = UDim.new(0, 6)
+ImmRadiusBox.FocusLost:Connect(function(enter) if enter then local val = tonumber(ImmRadiusBox.Text) or 40; Immortality.DesyncRadius = val; ImmRadiusBox.Text = tostring(val) end end)
+local ImmHeightBox = Instance.new("TextBox", ImmPanel); ImmHeightBox.Size = UDim2.new(0.4, 0, 0, 22)
+ImmHeightBox.Position = UDim2.new(0.55, 0, 0, 52); ImmHeightBox.BackgroundColor3 = RedDark; ImmHeightBox.TextColor3 = WhiteBg
+ImmHeightBox.PlaceholderColor3 = TextSub; ImmHeightBox.Font = Enum.Font.Gotham; ImmHeightBox.TextSize = 11
+ImmHeightBox.PlaceholderText = "Height"; ImmHeightBox.BorderSizePixel = 0; ImmHeightBox.Text = tostring(Immortality.DesyncHeight)
+Instance.new("UICorner", ImmHeightBox).CornerRadius = UDim.new(0, 6)
+ImmHeightBox.FocusLost:Connect(function(enter) if enter then local val = tonumber(ImmHeightBox.Text) or 50; Immortality.DesyncHeight = val; ImmHeightBox.Text = tostring(val) end end)
 makeDraggable(ImmPanel, ImmTitle)
 
-local ImmToggle = Instance.new("TextButton", ImmPanel)
-ImmToggle.Size = UDim2.new(0.7, 0, 0, 24)
-ImmToggle.Position = UDim2.new(0.15, 0, 0, 22)
-ImmToggle.Text = "IMM: OFF"
-ImmToggle.BackgroundColor3 = C.Dark
-ImmToggle.TextColor3 = C.White
-ImmToggle.Font = Enum.Font.GothamBold
-ImmToggle.TextSize = 13
-ImmToggle.BorderSizePixel = 0
-Instance.new("UICorner", ImmToggle).CornerRadius = UDim.new(0, 8)
-
-local immActive = false
-ImmToggle.MouseButton1Click:Connect(function()
-    immActive = not immActive
-    Immortality.Enabled = immActive
-    ImmToggle.Text = immActive and "IMM: ON" or "IMM: OFF"
-    ImmToggle.BackgroundColor3 = immActive and C.Border or C.Dark
-    notify("Kittylol", "Immortality: " .. (immActive and "ON" or "OFF"))
-end)
-
-local ImmRadBox = Instance.new("TextBox", ImmPanel)
-ImmRadBox.Size = UDim2.new(0.4, 0, 0, 22)
-ImmRadBox.Position = UDim2.new(0.05, 0, 0, 52)
-ImmRadBox.BackgroundColor3 = C.Dark; ImmRadBox.TextColor3 = C.White
-ImmRadBox.PlaceholderColor3 = C.Sub; ImmRadBox.Font = Enum.Font.Gotham
-ImmRadBox.TextSize = 11; ImmRadBox.Text = "40"
-ImmRadBox.PlaceholderText = "Radius"; ImmRadBox.BorderSizePixel = 0
-Instance.new("UICorner", ImmRadBox).CornerRadius = UDim.new(0, 6)
-ImmRadBox.FocusLost:Connect(function(e)
-    if e then
-        local v = tonumber(ImmRadBox.Text) or 40
-        Immortality.DesyncRadius = v; ImmRadBox.Text = tostring(v)
-    end
-end)
-
-local ImmHBox = Instance.new("TextBox", ImmPanel)
-ImmHBox.Size = UDim2.new(0.4, 0, 0, 22)
-ImmHBox.Position = UDim2.new(0.55, 0, 0, 52)
-ImmHBox.BackgroundColor3 = C.Dark; ImmHBox.TextColor3 = C.White
-ImmHBox.PlaceholderColor3 = C.Sub; ImmHBox.Font = Enum.Font.Gotham
-ImmHBox.TextSize = 11; ImmHBox.Text = "50"
-ImmHBox.PlaceholderText = "Height"; ImmHBox.BorderSizePixel = 0
-Instance.new("UICorner", ImmHBox).CornerRadius = UDim.new(0, 6)
-ImmHBox.FocusLost:Connect(function(e)
-    if e then
-        local v = tonumber(ImmHBox.Text) or 50
-        Immortality.DesyncHeight = v; ImmHBox.Text = tostring(v)
-    end
-end)
-
--- ===================== TOP BAR - CLICK TO OPEN =====================
-local gifFrames = {
-    "rbxassetid://119074790388219",
-    "rbxassetid://115672794096960",
-    "rbxassetid://71738870122726",
-    "rbxassetid://118412167563569",
-    "rbxassetid://137807993707113",
-    "rbxassetid://88762654041910",
-    "rbxassetid://129594193999212",
-    "rbxassetid://93903492440603",
-    "rbxassetid://137536008841598",
-}
-
-local TopBar = Instance.new("ImageButton", ScreenGui)
-TopBar.Size = UDim2.new(0, 180, 0, 30)
-TopBar.Position = UDim2.new(0.5, -90, 0, 6)
-TopBar.BackgroundColor3 = Color3.fromRGB(40, 10, 20)
-TopBar.BackgroundTransparency = 0.2
-TopBar.BorderSizePixel = 0
-TopBar.ClipsDescendants = true
-TopBar.ZIndex = 10
-TopBar.Image = gifFrames[1]
+-- ======================== TOP BAR (MINIMIZED) ========================
+local BAR_HEIGHT = 30; local BAR_WIDTH = 180
+local TopBar = Instance.new("Frame", ScreenGui)
+TopBar.Size = UDim2.new(0, BAR_WIDTH, 0, BAR_HEIGHT); TopBar.Position = UDim2.new(0.5, -BAR_WIDTH/2, 0, 6)
+TopBar.BackgroundColor3 = Color3.fromRGB(40, 10, 20); TopBar.BackgroundTransparency = 0.2
+TopBar.BorderSizePixel = 0; TopBar.ClipsDescendants = true
 Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 8)
-local TopBarStroke = Instance.new("UIStroke", TopBar)
-TopBarStroke.Color = C.Border; TopBarStroke.Thickness = 2
-
--- GIF animation
-local gifIdx, gifTime = 1, 0
-RunService.Heartbeat:Connect(function()
-    if not TopBar or not TopBar.Parent then return end
-    local n = tick()
-    if n - gifTime >= 0.1 then
-        gifTime = n; gifIdx = gifIdx + 1
-        if gifIdx > #gifFrames then gifIdx = 1 end
-        pcall(function() TopBar.Image = gifFrames[gifIdx] end)
-    end
-end)
+local TopBarStroke = Instance.new("UIStroke", TopBar); TopBarStroke.Color = RedBorder; TopBarStroke.Thickness = 2
 
 local TopBarTitle = Instance.new("TextLabel", TopBar)
-TopBarTitle.Size = UDim2.new(1, -5, 1, 0)
-TopBarTitle.Position = UDim2.new(0.08, 0, 0, 0)
-TopBarTitle.BackgroundTransparency = 1
-TopBarTitle.Text = "Kittylol paid"
-TopBarTitle.Font = Enum.Font.GothamBold
-TopBarTitle.TextSize = 14
-TopBarTitle.TextColor3 = C.Text
+TopBarTitle.Size = UDim2.new(1, -80, 1, 0); TopBarTitle.Position = UDim2.new(0.08, 0, 0, 0)
+TopBarTitle.BackgroundTransparency = 1; TopBarTitle.Text = "Kittylol paid"
+TopBarTitle.Font = Enum.Font.GothamBold; TopBarTitle.TextSize = 14; TopBarTitle.TextColor3 = TextRed
 TopBarTitle.TextXAlignment = Enum.TextXAlignment.Left
-TopBarTitle.ZIndex = 11
-
-local GuiOpen = false
-local function openGUI()
-    if GuiOpen then return end
-    GuiOpen = true
-    TopBar.Visible = false
-    Frame.Visible = true
-    Frame.Size = UDim2.new(0, 0, 0, 0)
-    TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 340, 0, 460)
-    }):Play()
-    notify("Kittylol", "GUI opened")
-end
-
-TopBar.MouseButton1Click:Connect(openGUI)
-TopBarTitle.MouseButton1Click:Connect(openGUI)
 makeDraggable(TopBar, TopBarTitle)
 
--- ===================== MAIN FRAME =====================
+-- NÚT + (MỞ GUI) - BÊN CẠNH TÊN
+local OpenBtn = Instance.new("TextButton", TopBar)
+OpenBtn.Size = UDim2.new(0, 28, 0, 28); OpenBtn.Position = UDim2.new(1, -64, 0.5, -14)
+OpenBtn.BackgroundColor3 = RedDark; OpenBtn.Text = "+"; OpenBtn.TextColor3 = WhiteBg
+OpenBtn.Font = Enum.Font.GothamBold; OpenBtn.TextSize = 18; OpenBtn.BorderSizePixel = 0
+OpenBtn.ZIndex = 2
+Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(0, 6)
+
+-- NÚT - (ĐÓNG/ẨN) - CẠNH NÚT +
+local CloseBtn = Instance.new("TextButton", TopBar)
+CloseBtn.Size = UDim2.new(0, 28, 0, 28); CloseBtn.Position = UDim2.new(1, -32, 0.5, -14)
+CloseBtn.BackgroundColor3 = RedDark; CloseBtn.Text = "-"; CloseBtn.TextColor3 = WhiteBg
+CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 18; CloseBtn.BorderSizePixel = 0
+CloseBtn.ZIndex = 2
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+
+-- ======================== MAIN GUI ========================
+local GUI_WIDTH = 340; local GUI_HEIGHT = 460
 local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 0, 0, 0)
-Frame.Position = UDim2.new(0.5, -170, 0.5, -230)
-Frame.BackgroundColor3 = Color3.fromRGB(40, 10, 20)
-Frame.BackgroundTransparency = 0.15
-Frame.BorderSizePixel = 0
-Frame.ClipsDescendants = true
-Frame.Visible = false
-Frame.ZIndex = 20
+Frame.Size = UDim2.new(0, 0, 0, 0); Frame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
+Frame.BackgroundColor3 = Color3.fromRGB(40, 10, 20); Frame.BackgroundTransparency = 0.15
+Frame.BorderSizePixel = 0; Frame.ClipsDescendants = true; Frame.Visible = false
 Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 22)
-local FrameStroke = Instance.new("UIStroke", Frame)
-FrameStroke.Color = C.Border; FrameStroke.Thickness = 2.5
+local MS = Instance.new("UIStroke", Frame); MS.Color = RedBorder; MS.Thickness = 2.5
 
-local TitleBar = Instance.new("Frame", Frame)
-TitleBar.Size = UDim2.new(1, 0, 0, 48)
-TitleBar.BackgroundColor3 = Color3.fromRGB(60, 15, 30)
-TitleBar.BackgroundTransparency = 0.2
-TitleBar.BorderSizePixel = 0
-TitleBar.ZIndex = 21
+local TitleBar = Instance.new("Frame", Frame); TitleBar.Size = UDim2.new(1, 0, 0, 48)
+TitleBar.BackgroundColor3 = Color3.fromRGB(60, 15, 30); TitleBar.BackgroundTransparency = 0.2; TitleBar.BorderSizePixel = 0
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 22)
-local TBMask = Instance.new("Frame", TitleBar)
-TBMask.Size = UDim2.new(1, 0, 0, 26)
-TBMask.Position = UDim2.new(0, 0, 0, 22)
-TBMask.BackgroundColor3 = Color3.fromRGB(40, 10, 20)
-TBMask.BackgroundTransparency = 0.15
-TBMask.BorderSizePixel = 0
-TBMask.ZIndex = 21
-
-local TitleLbl = Instance.new("TextLabel", TitleBar)
-TitleLbl.Size = UDim2.new(0.7, 0, 1, 0)
-TitleLbl.Position = UDim2.new(0.06, 0, 0, 0)
-TitleLbl.BackgroundTransparency = 1
-TitleLbl.Text = "Kittylol paid"
-TitleLbl.Font = Enum.Font.GothamBold
-TitleLbl.TextSize = 18
-TitleLbl.TextColor3 = C.Text
-TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
-TitleLbl.ZIndex = 22
+local TitleBarMask = Instance.new("Frame", TitleBar); TitleBarMask.Size = UDim2.new(1, 0, 0, 26)
+TitleBarMask.Position = UDim2.new(0, 0, 0, 22); TitleBarMask.BackgroundColor3 = Color3.fromRGB(40, 10, 20)
+TitleBarMask.BackgroundTransparency = 0.15; TitleBarMask.BorderSizePixel = 0
+local TitleLbl = Instance.new("TextLabel", TitleBar); TitleLbl.Size = UDim2.new(0.7, 0, 1, 0)
+TitleLbl.Position = UDim2.new(0.06, 0, 0, 0); TitleLbl.BackgroundTransparency = 1; TitleLbl.Text = "Kittylol paid"
+TitleLbl.Font = Enum.Font.GothamBold; TitleLbl.TextSize = 18; TitleLbl.TextColor3 = TextRed; TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 makeDraggable(Frame, TitleBar)
 
--- MINIMIZE BUTTON (GIF)
-local MinBtn = Instance.new("ImageButton", TitleBar)
-MinBtn.Size = UDim2.new(0, 34, 0, 34)
-MinBtn.Position = UDim2.new(1, -42, 0.5, -17)
-MinBtn.BackgroundColor3 = Color3.fromRGB(150, 10, 80)
-MinBtn.BorderSizePixel = 0
-MinBtn.Image = gifFrames[1]
+-- NÚT - (THU NHỎ) TRÊN TITLEBAR
+local MinBtn = Instance.new("TextButton", TitleBar)
+MinBtn.Size = UDim2.new(0, 34, 0, 34); MinBtn.Position = UDim2.new(1, -42, 0.5, -17)
+MinBtn.BackgroundColor3 = RedDark; MinBtn.Text = "-"; MinBtn.TextColor3 = WhiteBg
+MinBtn.Font = Enum.Font.GothamBold; MinBtn.TextSize = 22; MinBtn.BorderSizePixel = 0
 MinBtn.ZIndex = 23
 Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 9)
 
-local mIdx, mTime = 1, 0
-RunService.Heartbeat:Connect(function()
-    if not MinBtn or not MinBtn.Parent then return end
-    local n = tick()
-    if n - mTime >= 0.1 then
-        mTime = n; mIdx = mIdx + 1
-        if mIdx > #gifFrames then mIdx = 1 end
-        pcall(function() MinBtn.Image = gifFrames[mIdx] end)
-    end
+local guiOpened = false
+
+-- CLICK + MỞ GUI
+OpenBtn.MouseButton1Click:Connect(function()
+    if guiOpened then return end
+    guiOpened = true; TopBar.Visible = false
+    Frame.Position = UDim2.new(0.5, -GUI_WIDTH/2, 0.5, -GUI_HEIGHT/2)
+    Frame.Size = UDim2.new(0, 0, 0, 0); Frame.Visible = true
+    TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, GUI_WIDTH, 0, GUI_HEIGHT)
+    }):Play()
+    notify("Kittylol", "GUI opened")
 end)
 
+-- CLICK - THU NHỎ (trên TitleBar)
 MinBtn.MouseButton1Click:Connect(function()
-    local tw = TweenService:Create(Frame, TweenInfo.new(0.15), {Size = UDim2.new(0, 0, 0, 0)})
+    local tw = TweenService:Create(Frame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 0)
+    })
     tw:Play()
     tw.Completed:Connect(function()
-        Frame.Visible = false
-        GuiOpen = false
-        TopBar.Visible = true
+        Frame.Visible = false; guiOpened = false; TopBar.Visible = true
         TweenService:Create(TopBar, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0.5, -90, 0, 6)
+            Position = UDim2.new(0.5, -BAR_WIDTH/2, 0, 6)
         }):Play()
     end)
 end)
 
--- ===================== CONTENT =====================
+-- CLICK - (trên TopBar, cạnh +) Ẩn luôn TopBar
+CloseBtn.MouseButton1Click:Connect(function()
+    TopBar.Visible = false
+end)
+
+-- Content
 local Content = Instance.new("ScrollingFrame", Frame)
-Content.Size = UDim2.new(1, 0, 1, -48)
-Content.Position = UDim2.new(0, 0, 0, 48)
-Content.BackgroundTransparency = 1
-Content.BorderSizePixel = 0
-Content.ScrollBarThickness = 4
-Content.ScrollBarImageColor3 = C.Border
-Content.CanvasSize = UDim2.new(0, 0, 0, 0)
-Content.ScrollingDirection = Enum.ScrollingDirection.Y
+Content.Size = UDim2.new(1, 0, 1, -48); Content.Position = UDim2.new(0, 0, 0, 48)
+Content.BackgroundTransparency = 1; Content.BorderSizePixel = 0
+Content.ScrollBarThickness = 4; Content.ScrollBarImageColor3 = RedBorder
+Content.CanvasSize = UDim2.new(0, 0, 0, 2200); Content.ScrollingDirection = Enum.ScrollingDirection.Y
 Content.ElasticBehavior = Enum.ElasticBehavior.Always
-Content.ZIndex = 22
 
-local UIList = Instance.new("UIListLayout", Content)
-UIList.Padding = UDim.new(0, 4)
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
+local UIListLayout = Instance.new("UIListLayout", Content)
+UIListLayout.Padding = UDim.new(0, 4); UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
-local order = 0
-
-local function divider()
-    local d = Instance.new("Frame", Content)
-    d.Size = UDim2.new(0.86, 0, 0, 1)
-    d.BackgroundColor3 = C.Border; d.BorderSizePixel = 0
-    d.BackgroundTransparency = 0.5
-    d.LayoutOrder = order; order = order + 1
-end
-
-local function section(txt)
-    local l = Instance.new("TextLabel", Content)
-    l.Size = UDim2.new(1, 0, 0, 20)
-    l.BackgroundTransparency = 1; l.Text = txt
-    l.Font = Enum.Font.GothamBold; l.TextSize = 10
-    l.TextColor3 = C.Border; l.TextXAlignment = Enum.TextXAlignment.Center
-    l.LayoutOrder = order; order = order + 1
-end
-
-local function toggle(label, init, cb)
-    local h = Instance.new("Frame", Content)
-    h.Size = UDim2.new(1, -10, 0, 30)
-    h.BackgroundTransparency = 1
-    h.LayoutOrder = order; order = order + 1
-
-    local lbl = Instance.new("TextLabel", h)
-    lbl.Size = UDim2.new(0.6, 0, 1, 0)
-    lbl.Position = UDim2.new(0.045, 0, 0, 0)
-    lbl.BackgroundTransparency = 1; lbl.Text = label
-    lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 12
-    lbl.TextColor3 = C.Text; lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-    local btn = Instance.new("TextButton", h)
-    btn.Size = UDim2.new(0, 55, 0, 24)
-    btn.Position = UDim2.new(1, -62, 0, 3)
-    btn.BackgroundColor3 = init and C.Border or C.Dark
-    btn.Text = init and "ON" or "OFF"
-    btn.Font = Enum.Font.GothamBold; btn.TextSize = 11
-    btn.TextColor3 = C.White; btn.BorderSizePixel = 0
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-    local s = init
-    btn.MouseButton1Click:Connect(function()
-        s = not s; btn.Text = s and "ON" or "OFF"
-        btn.BackgroundColor3 = s and C.Border or C.Dark; cb(s)
-    end)
-end
-
-local function numInput(holder, label, default, min, max, cb)
-    local lbl = Instance.new("TextLabel", holder)
-    lbl.Size = UDim2.new(0.6, 0, 0, 16)
-    lbl.Position = UDim2.new(0.045, 0, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label .. ": " .. default
-    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 10
-    lbl.TextColor3 = C.Sub; lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-    local box = Instance.new("TextBox", holder)
-    box.Size = UDim2.new(0.3, 0, 0, 22)
-    box.Position = UDim2.new(0.65, 0, 0, -2)
-    box.BackgroundColor3 = C.Dark; box.TextColor3 = C.White
-    box.PlaceholderColor3 = C.Sub; box.Font = Enum.Font.Gotham
-    box.TextSize = 11; box.Text = tostring(default)
-    box.BorderSizePixel = 0
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
-    box.FocusLost:Connect(function(e)
-        if e then
-            local v = tonumber(box.Text) or default
-            v = math.clamp(v, min, max)
-            box.Text = tostring(v); lbl.Text = label .. ": " .. v; cb(v)
-        end
-    end)
-end
-
--- STATUS
+-- Status
 local StatusLbl = Instance.new("TextLabel", Content)
-StatusLbl.Size = UDim2.new(1, 0, 0, 18)
-StatusLbl.BackgroundTransparency = 1
-StatusLbl.Text = "Kittylol paid blade remote"
-StatusLbl.Font = Enum.Font.Gotham; StatusLbl.TextSize = 10
-StatusLbl.TextColor3 = C.Sub
-StatusLbl.LayoutOrder = order; order = order + 1
+StatusLbl.Size = UDim2.new(1, 0, 0, 18); StatusLbl.BackgroundTransparency = 1
+StatusLbl.Text = "Kittylol paid blade remote"; StatusLbl.Font = Enum.Font.Gotham
+StatusLbl.TextSize = 10; StatusLbl.TextColor3 = TextSub; StatusLbl.LayoutOrder = 0
 
 task.spawn(function()
     while not remoteHooked do task.wait(0.1) end
-    StatusLbl.Text = "@Kittylol"; StatusLbl.TextColor3 = C.Text
-    notify("Kittylol paid", "remote hooked ✅")
+    StatusLbl.Text = "@Kittylol"; StatusLbl.TextColor3 = TextRed
 end)
 
--- ===================== BUILD UI =====================
-divider(); section("-- COMBAT --")
+local currentOrder = 1
 
-toggle("Auto Parry", false, function(v)
-    AutoParry = v; parried_balls = {}
-    notify("Kittylol", "Auto Parry: " .. (v and "ON" or "OFF"))
-end)
+local function makDiv()
+    local d = Instance.new("Frame", Content); d.Size = UDim2.new(0.86, 0, 0, 1)
+    d.BackgroundColor3 = RedBorder; d.BorderSizePixel = 0; d.BackgroundTransparency = 0.5
+    d.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+end
 
-divider()
-toggle("Auto Spam Parry", false, function(v)
-    AutoSpamParry = v; getgenv().animationfix = v
-    notify("Kittylol", "Auto Spam Parry: " .. (v and "ON" or "OFF"))
-end)
+local function makeSectionLabel(txt)
+    local lbl = Instance.new("TextLabel", Content); lbl.Size = UDim2.new(1, 0, 0, 20)
+    lbl.BackgroundTransparency = 1; lbl.Text = txt; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 10
+    lbl.TextColor3 = RedBorder; lbl.TextXAlignment = Enum.TextXAlignment.Center
+    lbl.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+end
 
-divider()
-toggle("Manual Spam", false, function(v)
-    ManualSpam = v; SpamPanel.Visible = v
-    if not v then spamActive = false; SpamToggle.Text = "SPAM: OFF"; SpamToggle.BackgroundColor3 = C.Dark end
-    notify("Kittylol", "Manual Spam: " .. (v and "ON" or "OFF"))
-end)
+local function makeToggle(labelTxt, initState, onToggle)
+    local holder = Instance.new("Frame", Content); holder.Size = UDim2.new(1, -10, 0, 30)
+    holder.BackgroundTransparency = 1; holder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+    local lbl = Instance.new("TextLabel", holder); lbl.Size = UDim2.new(0.6, 0, 1, 0)
+    lbl.Position = UDim2.new(0.045, 0, 0, 0); lbl.BackgroundTransparency = 1; lbl.Text = labelTxt
+    lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 12; lbl.TextColor3 = TextRed; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local btn = Instance.new("TextButton", holder); btn.Size = UDim2.new(0, 55, 0, 24)
+    btn.Position = UDim2.new(1, -62, 0, 3); btn.BackgroundColor3 = initState and RedBorder or RedDark
+    btn.Text = initState and "ON" or "OFF"; btn.Font = Enum.Font.GothamBold; btn.TextSize = 11
+    btn.TextColor3 = WhiteBg; btn.BorderSizePixel = 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    local state = initState
+    btn.MouseButton1Click:Connect(function()
+        state = not state; btn.Text = state and "ON" or "OFF"
+        btn.BackgroundColor3 = state and RedBorder or RedDark; onToggle(state)
+    end)
+end
 
-divider()
-toggle("Immortality", false, function(v)
-    ImmPanel.Visible = v
-    if not v then immActive = false; Immortality.Enabled = false; ImmToggle.Text = "IMM: OFF"; ImmToggle.BackgroundColor3 = C.Dark end
-    notify("Kittylol", "Immortality Panel: " .. (v and "Hiển thị" or "Ẩn"))
-end)
-
-local immH1 = Instance.new("Frame", Content)
-immH1.Size = UDim2.new(1, -10, 0, 34)
-immH1.BackgroundTransparency = 1
-immH1.LayoutOrder = order; order = order + 1
-numInput(immH1, "Immortal Radius", 40, 0, 200, function(v) Immortality.DesyncRadius = v; ImmRadBox.Text = tostring(v) end)
-
-local immH2 = Instance.new("Frame", Content)
-immH2.Size = UDim2.new(1, -10, 0, 34)
-immH2.BackgroundTransparency = 1
-immH2.LayoutOrder = order; order = order + 1
-numInput(immH2, "Immortal Height", 50, 0, 200, function(v) Immortality.DesyncHeight = v; ImmHBox.Text = tostring(v) end)
-
-divider()
-toggle("Triggerbot", false, function(v) getgenv().Triggerbot = v; notify("Kittylol", "Triggerbot: " .. (v and "ON" or "OFF")) end)
-
-divider(); section("-- EMOTES --")
-local emotesData = {"Dance", "Wave", "Point", "Sit", "Laugh", "Clap", "Cheer"}
-local curEmote = emotesData[1]; local emoteActive = false
-toggle("Emotes", false, function(v)
-    emoteActive = v
-    if v then
-        local char = LocalPlayer.Character
-        if char and char:FindFirstChild("Humanoid") then
-            char.Humanoid.Sit = (curEmote == "Sit")
+local function makeNumberInput(holder, label, default, minVal, maxVal, callback)
+    local lbl = Instance.new("TextLabel", holder); lbl.Size = UDim2.new(0.6, 0, 0, 16)
+    lbl.Position = UDim2.new(0.045, 0, 0, 0); lbl.BackgroundTransparency = 1
+    lbl.Text = label .. ": " .. default; lbl.Font = Enum.Font.Gotham; lbl.TextSize = 10
+    lbl.TextColor3 = TextSub; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local box = Instance.new("TextBox", holder); box.Size = UDim2.new(0.3, 0, 0, 22)
+    box.Position = UDim2.new(0.65, 0, 0, -2); box.BackgroundColor3 = RedDark; box.TextColor3 = WhiteBg
+    box.PlaceholderColor3 = TextSub; box.Font = Enum.Font.Gotham; box.TextSize = 11; box.Text = tostring(default)
+    box.BorderSizePixel = 0; Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+    box.FocusLost:Connect(function(enter)
+        if enter then
+            local val = tonumber(box.Text) or default; val = math.clamp(val, minVal, maxVal)
+            box.Text = tostring(val); lbl.Text = label .. ": " .. val; callback(val)
         end
-    else
-        local char = LocalPlayer.Character
-        if char and char:FindFirstChild("Humanoid") then char.Humanoid.Sit = false end
-    end
-end)
+    end)
+end
 
-divider(); section("-- AUTO JUMP --")
-toggle("Auto Jump", false, function(v)
-    getgenv().autojump = v; if v then lastJump = 0 end
-    notify("Kittylol", "Auto Jump: " .. (v and "ON" or "OFF"))
+-- ==================== BUILD GUI CONTENT ====================
+makDiv(); makeSectionLabel("-- COMBAT --")
+makeToggle("Auto Parry", false, function(v) AutoParry = v; parried_balls = {}; notify("Kittylol", "Auto Parry: " .. (v and "ON" or "OFF")) end)
+makDiv()
+makeToggle("Auto Spam Parry", false, function(v) AutoSpamParry = v; getgenv().animationfix = v; notify("Kittylol", "Auto Spam Parry: " .. (v and "ON" or "OFF")) end)
+makDiv()
+makeToggle("Manual Spam", false, function(v) ManualSpam = v; SpamPanel.Visible = v; if not v then spamActive = false; SpamToggle.Text = "SPAM: OFF"; SpamToggle.BackgroundColor3 = RedDark end; notify("Kittylol", "Manual Spam: " .. (v and "ON" or "OFF")) end)
+makDiv()
+makeToggle("Immortality", false, function(v) ImmPanel.Visible = v; if not v then immortalityActive = false; Immortality.Enabled = false; ImmToggle.Text = "IMM: OFF"; ImmToggle.BackgroundColor3 = RedDark end; notify("Kittylol", "Immortality Panel: " .. (v and "Hiển thị" or "Ẩn")) end)
+local immSettingsHolder = Instance.new("Frame", Content); immSettingsHolder.Size = UDim2.new(1, -10, 0, 34); immSettingsHolder.BackgroundTransparency = 1; immSettingsHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(immSettingsHolder, "Immortal Radius", 40, 0, 200, function(v) Immortality.DesyncRadius = v; ImmRadiusBox.Text = tostring(v) end)
+local immSettingsHolder2 = Instance.new("Frame", Content); immSettingsHolder2.Size = UDim2.new(1, -10, 0, 34); immSettingsHolder2.BackgroundTransparency = 1; immSettingsHolder2.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(immSettingsHolder2, "Immortal Height", 50, 0, 200, function(v) Immortality.DesyncHeight = v; ImmHeightBox.Text = tostring(v) end)
+makDiv()
+makeToggle("Triggerbot", false, function(v) getgenv().Triggerbot = v; notify("Kittylol", "Triggerbot: " .. (v and "ON" or "OFF")) end)
+makDiv(); makeSectionLabel("-- EMOTES --")
+local emotesHolder = Instance.new("Frame", Content); emotesHolder.Size = UDim2.new(1, -10, 0, 30); emotesHolder.BackgroundTransparency = 1; emotesHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+local emotesLbl = Instance.new("TextLabel", emotesHolder); emotesLbl.Size = UDim2.new(0.6, 0, 1, 0); emotesLbl.Position = UDim2.new(0.045, 0, 0, 0); emotesLbl.BackgroundTransparency = 1; emotesLbl.Text = "Emotes"; emotesLbl.Font = Enum.Font.GothamBold; emotesLbl.TextSize = 12; emotesLbl.TextColor3 = TextRed; emotesLbl.TextXAlignment = Enum.TextXAlignment.Left
+local emotesBtn = Instance.new("TextButton", emotesHolder); emotesBtn.Size = UDim2.new(0, 55, 0, 24); emotesBtn.Position = UDim2.new(1, -62, 0, 3); emotesBtn.BackgroundColor3 = RedDark; emotesBtn.Text = "OFF"; emotesBtn.Font = Enum.Font.GothamBold; emotesBtn.TextSize = 11; emotesBtn.TextColor3 = WhiteBg; emotesBtn.BorderSizePixel = 0
+Instance.new("UICorner", emotesBtn).CornerRadius = UDim.new(0, 8)
+local emotesState = false; local autoStopEmotes = false
+emotesBtn.MouseButton1Click:Connect(function()
+    emotesState = not emotesState; emotesBtn.Text = emotesState and "ON" or "OFF"; emotesBtn.BackgroundColor3 = emotesState and RedBorder or RedDark
+    if emotesState then animation_system.start(); if selected_animation then animation_system.play(selected_animation) end else animation_system.cleanup() end
 end)
-
-local lastJump = 0
+local emoteDropdownHolder = Instance.new("Frame", Content); emoteDropdownHolder.Size = UDim2.new(1, -10, 0, 30); emoteDropdownHolder.BackgroundTransparency = 1; emoteDropdownHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+local emoteDropdownLbl = Instance.new("TextLabel", emoteDropdownHolder); emoteDropdownLbl.Size = UDim2.new(0.6, 0, 1, 0); emoteDropdownLbl.Position = UDim2.new(0.045, 0, 0, 0); emoteDropdownLbl.BackgroundTransparency = 1; emoteDropdownLbl.Text = "Emote: " .. selected_animation; emoteDropdownLbl.Font = Enum.Font.Gotham; emoteDropdownLbl.TextSize = 11; emoteDropdownLbl.TextColor3 = TextSub; emoteDropdownLbl.TextXAlignment = Enum.TextXAlignment.Left
+local emoteDropdownBtn = Instance.new("TextButton", emoteDropdownHolder); emoteDropdownBtn.Size = UDim2.new(0, 80, 0, 24); emoteDropdownBtn.Position = UDim2.new(1, -88, 0, 3); emoteDropdownBtn.BackgroundColor3 = RedDark; emoteDropdownBtn.Text = "Select"; emoteDropdownBtn.Font = Enum.Font.GothamBold; emoteDropdownBtn.TextSize = 10; emoteDropdownBtn.TextColor3 = WhiteBg; emoteDropdownBtn.BorderSizePixel = 0
+Instance.new("UICorner", emoteDropdownBtn).CornerRadius = UDim.new(0, 8)
+local autoStopHolder = Instance.new("Frame", Content); autoStopHolder.Size = UDim2.new(1, -10, 0, 28); autoStopHolder.BackgroundTransparency = 1; autoStopHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+local autoStopLbl = Instance.new("TextLabel", autoStopHolder); autoStopLbl.Size = UDim2.new(0.6, 0, 1, 0); autoStopLbl.Position = UDim2.new(0.045, 0, 0, 0); autoStopLbl.BackgroundTransparency = 1; autoStopLbl.Text = "Auto Stop"; autoStopLbl.Font = Enum.Font.Gotham; autoStopLbl.TextSize = 11; autoStopLbl.TextColor3 = TextSub; autoStopLbl.TextXAlignment = Enum.TextXAlignment.Left
+local autoStopCheck = Instance.new("TextButton", autoStopHolder); autoStopCheck.Size = UDim2.new(0, 28, 0, 20); autoStopCheck.Position = UDim2.new(1, -34, 0, 4); autoStopCheck.BackgroundColor3 = RedDark; autoStopCheck.Text = ""; autoStopCheck.Font = Enum.Font.GothamBold; autoStopCheck.TextSize = 14; autoStopCheck.TextColor3 = WhiteBg; autoStopCheck.BorderSizePixel = 0
+Instance.new("UICorner", autoStopCheck).CornerRadius = UDim.new(0, 5)
+local autoStopCheckMark = Instance.new("TextLabel", autoStopCheck); autoStopCheckMark.Size = UDim2.new(1, 0, 1, 0); autoStopCheckMark.BackgroundTransparency = 1; autoStopCheckMark.Text = ""; autoStopCheckMark.Font = Enum.Font.GothamBold; autoStopCheckMark.TextColor3 = WhiteBg; autoStopCheckMark.Visible = false
+autoStopCheck.MouseButton1Click:Connect(function() autoStopEmotes = not autoStopEmotes; autoStopCheckMark.Text = autoStopEmotes and "✓" or ""; autoStopCheckMark.Visible = autoStopEmotes; autoStopCheck.BackgroundColor3 = autoStopEmotes and RedBorder or RedDark; getgenv().AutoStop = autoStopEmotes end)
 RunService.Heartbeat:Connect(function()
-    if not getgenv().autojump then return end
-    if tick() - lastJump >= 0.6 then
+    if getgenv().AutoStop and animation_system.running then
         local char = LocalPlayer.Character
         if char then
             local hum = char:FindFirstChild("Humanoid")
-            if hum and hum.Health > 0 then hum:ChangeState(Enum.HumanoidStateType.Jumping); lastJump = tick() end
+            if hum and hum.MoveDirection.Magnitude > 0.1 then if animation_system.current then animation_system.current:Stop() end
+            elseif hum and hum.MoveDirection.Magnitude < 0.1 and not animation_system.current then if selected_animation and emotesState then animation_system.play(selected_animation) end end
         end
     end
 end)
+makDiv(); makeSectionLabel("-- AUTO JUMP --")
+makeToggle("Auto Jump", false, function(v) getgenv().autojump = v; if v then lastJump = 0 end; notify("Kittylol", "Auto Jump: " .. (v and "ON" or "OFF")) end)
+makDiv(); makeSectionLabel("-- PLAYER COSMETICS --")
+makeToggle("Cosmetics", false, function(v) CosmeticsActive = v; local pcall_success = pcall(function() if CosmeticsActive then if LocalPlayer.Character then applyCosmetics(LocalPlayer.Character, true, true) end; if _G.PlayerCosmeticsCleanup.characterAddedConn then _G.PlayerCosmeticsCleanup.characterAddedConn:Disconnect() end; _G.PlayerCosmeticsCleanup.characterAddedConn = LocalPlayer.CharacterAdded:Connect(function(newChar) newChar:WaitForChild("Head"); task.wait(0.5); if CosmeticsActive then applyCosmetics(newChar, true, true) end end) else if _G.PlayerCosmeticsCleanup.characterAddedConn then _G.PlayerCosmeticsCleanup.characterAddedConn:Disconnect(); _G.PlayerCosmeticsCleanup.characterAddedConn = nil end; local char = LocalPlayer.Character; if char then local head = char:FindFirstChild("Head"); if head then head.Transparency = 0; for _, child in pairs(head:GetChildren()) do if child:IsA("Decal") then child.Transparency = 0 end end end; local humanoid = char:FindFirstChildOfClass("Humanoid"); if humanoid then local desc = LocalPlayer:GetAppliedDescription(); if desc then pcall(function() humanoid:ApplyDescription(desc) end) end end end end) end)
+makDiv(); makeSectionLabel("-- FLY --")
+makeToggle("Fly", false, function(v) getgenv().FlySpeed = 50; if v then PlayerModules.ModuleFly(true) else PlayerModules.ModuleFly(false) end; notify("Kittylol", "Fly: " .. (v and "ON" or "OFF")) end)
+local flyNumHolder = Instance.new("Frame", Content); flyNumHolder.Size = UDim2.new(1, -10, 0, 34); flyNumHolder.BackgroundTransparency = 1; flyNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(flyNumHolder, "Fly Speed", 50, 10, 200, function(v) getgenv().FlySpeed = v end)
+makDiv(); makeSectionLabel("-- JUMP POWER --")
+makeToggle("Jump Power", false, function(v) getgenv().CustomJumpPower = 50; getgenv().JumpPowerCheckboxEnabled = v; local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.UseJumpPower = true; char.Humanoid.JumpPower = v and 50 or (getgenv().OriginalValues and getgenv().OriginalValues.JumpPower or 50) end end)
+local jumpNumHolder = Instance.new("Frame", Content); jumpNumHolder.Size = UDim2.new(1, -10, 0, 34); jumpNumHolder.BackgroundTransparency = 1; jumpNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(jumpNumHolder, "Jump Power", 50, 50, 500, function(v) getgenv().CustomJumpPower = v; if getgenv().JumpPowerCheckboxEnabled then local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.JumpPower = v end end end)
+makDiv(); makeSectionLabel("-- GRAVITY --")
+makeToggle("Gravity", false, function(v) getgenv().GravityCheckboxEnabled = v; getgenv().CustomGravity = 196; workspace.Gravity = v and 196 or (getgenv().OriginalValues and getgenv().OriginalValues.Gravity or 196.2) end)
+local gravityNumHolder = Instance.new("Frame", Content); gravityNumHolder.Size = UDim2.new(1, -10, 0, 34); gravityNumHolder.BackgroundTransparency = 1; gravityNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(gravityNumHolder, "Gravity", 196, 0, 500, function(v) getgenv().CustomGravity = v; if getgenv().GravityCheckboxEnabled then workspace.Gravity = v end end)
+makDiv(); makeSectionLabel("-- HIP HEIGHT --")
+makeToggle("Hip Height", false, function(v) getgenv().HipHeightCheckboxEnabled = v; getgenv().CustomHipHeight = 0; local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.HipHeight = v and 0 or (getgenv().OriginalValues and getgenv().OriginalValues.HipHeight or 0) end end)
+local hipNumHolder = Instance.new("Frame", Content); hipNumHolder.Size = UDim2.new(1, -10, 0, 34); hipNumHolder.BackgroundTransparency = 1; hipNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(hipNumHolder, "Hip Height", 0, -10, 250, function(v) getgenv().CustomHipHeight = v; if getgenv().HipHeightCheckboxEnabled then local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid.HipHeight = v end end end)
+makDiv(); makeSectionLabel("-- INFINITE JUMP --")
+makeToggle("Infinite Jump", false, function(v) getgenv().InfiniteJumpEnabled = v; if v then if not getgenv().InfiniteJumpConnection then getgenv().InfiniteJumpConnection = UserInputService.JumpRequest:Connect(function() if getgenv().InfiniteJumpEnabled then local char = LocalPlayer.Character; if char and char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping) end end end) end else if getgenv().InfiniteJumpConnection then getgenv().InfiniteJumpConnection:Disconnect(); getgenv().InfiniteJumpConnection = nil end end; notify("Kittylol", "Infinite Jump: " .. (v and "ON" or "OFF")) end)
+makDiv(); makeSectionLabel("-- PLAYER FOLLOW --")
+makeToggle("Player Follow", false, function(v) getgenv().PlayerFollowEnabled = v; if v then if not getgenv().PlayerFollowConnection then getgenv().PlayerFollowConnection = RunService.Heartbeat:Connect(function() if not SelectedPlayerFollow or not getgenv().PlayerFollowEnabled then return end; local targetPlayer = Players:FindFirstChild(SelectedPlayerFollow); if targetPlayer and targetPlayer.Character and targetPlayer.Character.PrimaryPart then local char = LocalPlayer.Character; if char and char:FindFirstChild("Humanoid") then char.Humanoid:MoveTo(targetPlayer.Character.PrimaryPart.Position) end end end) end else if getgenv().PlayerFollowConnection then getgenv().PlayerFollowConnection:Disconnect(); getgenv().PlayerFollowConnection = nil end end end)
+makDiv(); makeSectionLabel("-- HIT SOUNDS --")
+makeToggle("Hit Sounds", false, function(v) hit_Sound_Enabled = v; if v then hit_Sound.SoundId = hitSoundIds["Medal"]; hit_Sound.Volume = 5 end; notify("Kittylol", "Hit Sounds: " .. (v and "ON" or "OFF")) end)
+local hitVolNumHolder = Instance.new("Frame", Content); hitVolNumHolder.Size = UDim2.new(1, -10, 0, 34); hitVolNumHolder.BackgroundTransparency = 1; hitVolNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(hitVolNumHolder, "Volume", 5, 1, 10, function(v) hit_Sound.Volume = v end)
+makDiv(); makeSectionLabel("-- AVATAR CHANGER --")
+makeToggle("Avatar Changer", false, function(v) __flags['Active'] = v; if v then local __char = __localplayer.Character; if __char and __flags['name'] then __set(__flags['name'], __char) end; if not __flags['loop'] then __flags['loop'] = __localplayer.CharacterAdded:Connect(function(char) task.wait(0.75); if __flags['Active'] and __flags['name'] then __set(__flags['name'], char) end end) end else if __flags['loop'] then __flags['loop']:Disconnect(); __flags['loop'] = nil end; local __char = __localplayer.Character; if __char then __set(__localplayer.Name, __char) end end end)
+local avatarTextBoxHolder = Instance.new("Frame", Content); avatarTextBoxHolder.Size = UDim2.new(1, -10, 0, 30); avatarTextBoxHolder.BackgroundTransparency = 1; avatarTextBoxHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+local avatarTextBoxLbl = Instance.new("TextLabel", avatarTextBoxHolder); avatarTextBoxLbl.Size = UDim2.new(0.4, 0, 1, 0); avatarTextBoxLbl.Position = UDim2.new(0.045, 0, 0, 0); avatarTextBoxLbl.BackgroundTransparency = 1; avatarTextBoxLbl.Text = "Username:"; avatarTextBoxLbl.Font = Enum.Font.Gotham; avatarTextBoxLbl.TextSize = 11; avatarTextBoxLbl.TextColor3 = TextSub; avatarTextBoxLbl.TextXAlignment = Enum.TextXAlignment.Left
+local avatarTextBox = Instance.new("TextBox", avatarTextBoxHolder); avatarTextBox.Size = UDim2.new(0.45, 0, 0, 24); avatarTextBox.Position = UDim2.new(0.5, 0, 0, 3); avatarTextBox.BackgroundColor3 = RedDark; avatarTextBox.TextColor3 = WhiteBg; avatarTextBox.PlaceholderColor3 = Color3.fromRGB(180, 120, 120); avatarTextBox.Font = Enum.Font.Gotham; avatarTextBox.TextSize = 11; avatarTextBox.PlaceholderText = "Username..."; avatarTextBox.BorderSizePixel = 0
+Instance.new("UICorner", avatarTextBox).CornerRadius = UDim.new(0, 6)
+avatarTextBox.FocusLost:Connect(function(enterPressed) if enterPressed then local text = avatarTextBox.Text; __flags['name'] = text; if __flags['Active'] and text ~= '' then if __localplayer.Character then __set(text, __localplayer.Character) end end end end)
+makDiv(); makeSectionLabel("-- VISUALS --")
+makeToggle("Ball Stats", false, function(v) ShowPeak = v; PFrame.Visible = v end)
+makDiv()
+makeToggle("Ability ESP", false, function(v) getgenv().AbilityESP = v; for _, label in pairs(billboardLabels) do if label then label.Visible = v end end; notify("Kittylol", "Ability ESP: " .. (v and "ON" or "OFF")) end)
+makDiv(); makeSectionLabel("-- ANTI LAG --")
+makeToggle("Anti Lag", false, function(v) AntiLag = v; applyAntiLag(v); notify("Kittylol", "Anti Lag: " .. (v and "ON" or "OFF")) end)
+makDiv(); makeSectionLabel("-- FAKE WIN STREAK --")
+makeToggle("Fake Win Streak", false, function(v) groupEnabled = v; if v then applyFake(fakeStreakValue > 0 and fakeStreakValue or 1) else clearFake() end; notify("Kittylol", "Fake Win Streak: " .. (v and "ON" or "OFF")) end)
+local streakNumHolder = Instance.new("Frame", Content); streakNumHolder.Size = UDim2.new(1, -10, 0, 34); streakNumHolder.BackgroundTransparency = 1; streakNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(streakNumHolder, "Streak Value", 100, 1, 9999, function(v) fakeStreakValue = v; if groupEnabled then applyFake(v) end end)
+makDiv(); makeSectionLabel("-- BALL TRAIL --")
+local trailHolder = Instance.new("Frame", Content); trailHolder.Size = UDim2.new(1, -10, 0, 30); trailHolder.BackgroundTransparency = 1; trailHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+local trailLbl = Instance.new("TextLabel", trailHolder); trailLbl.Size = UDim2.new(0.6, 0, 1, 0); trailLbl.Position = UDim2.new(0.045, 0, 0, 0); trailLbl.BackgroundTransparency = 1; trailLbl.Text = "Ball Trail"; trailLbl.Font = Enum.Font.GothamBold; trailLbl.TextSize = 12; trailLbl.TextColor3 = TextRed; trailLbl.TextXAlignment = Enum.TextXAlignment.Left
+local trailBtn = Instance.new("TextButton", trailHolder); trailBtn.Size = UDim2.new(0, 55, 0, 24); trailBtn.Position = UDim2.new(1, -62, 0, 3); trailBtn.BackgroundColor3 = RedDark; trailBtn.Text = "OFF"; trailBtn.Font = Enum.Font.GothamBold; trailBtn.TextSize = 11; trailBtn.TextColor3 = WhiteBg; trailBtn.BorderSizePixel = 0
+Instance.new("UICorner", trailBtn).CornerRadius = UDim.new(0, 8)
+local trailState = false
+trailBtn.MouseButton1Click:Connect(function() trailState = not trailState; trailBtn.Text = trailState and "ON" or "OFF"; trailBtn.BackgroundColor3 = trailState and RedBorder or RedDark; BallTrail = trailState; PlasmaTrails.Enabled = trailState; if not trailState then if last_ball then Plasma.cleanup_trails(last_ball); last_ball = nil end; if _G.RainbowTrailLoop then _G.RainbowTrailLoop:Disconnect(); _G.RainbowTrailLoop = nil; _G.lastTrailRainbowUpdate = nil end end; notify("Kittylol", "Ball Trail: " .. (trailState and "ON" or "OFF")) end)
+local trailNumHolder = Instance.new("Frame", Content); trailNumHolder.Size = UDim2.new(1, -10, 0, 34); trailNumHolder.BackgroundTransparency = 1; trailNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(trailNumHolder, "Number of Trails", 10, 1, 160, function(v) if PlasmaTrails.Enabled then PlasmaTrails.NumTrails = v; if last_ball then Plasma.cleanup_trails(last_ball); if PlasmaTrails.Enabled then Plasma.create_trails(last_ball) end end end end)
+local rainbowNumHolder = Instance.new("Frame", Content); rainbowNumHolder.Size = UDim2.new(1, -10, 0, 34); rainbowNumHolder.BackgroundTransparency = 1; rainbowNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(rainbowNumHolder, "Rainbow Speed", 5, 1, 50, function(v) _G.rainbowTrailSpeed = v / 10 end)
+local hueNumHolder = Instance.new("Frame", Content); hueNumHolder.Size = UDim2.new(1, -10, 0, 34); hueNumHolder.BackgroundTransparency = 1; hueNumHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+makeNumberInput(hueNumHolder, "Trail Color", 0, 0, 1000, function(v) if not PlasmaTrails.RainbowTrail then local h = v / 1000; PlasmaTrails.TrailColor = Color3.fromHSV(h, 1, 1); if last_ball then Plasma.update_trail_colors(last_ball) end end end)
+local rainbowHolder = Instance.new("Frame", Content); rainbowHolder.Size = UDim2.new(1, -10, 0, 28); rainbowHolder.BackgroundTransparency = 1; rainbowHolder.LayoutOrder = currentOrder; currentOrder = currentOrder + 1
+local rainbowLbl = Instance.new("TextLabel", rainbowHolder); rainbowLbl.Size = UDim2.new(0.6, 0, 1, 0); rainbowLbl.Position = UDim2.new(0.045, 0, 0, 0); rainbowLbl.BackgroundTransparency = 1; rainbowLbl.Text = "Rainbow Trail"; rainbowLbl.Font = Enum.Font.Gotham; rainbowLbl.TextSize = 11; rainbowLbl.TextColor3 = TextSub; rainbowLbl.TextXAlignment = Enum.TextXAlignment.Left
+local rainbowCheck = Instance.new("TextButton", rainbowHolder); rainbowCheck.Size = UDim2.new(0, 28, 0, 20); rainbowCheck.Position = UDim2.new(1, -34, 0, 4); rainbowCheck.BackgroundColor3 = RedDark; rainbowCheck.Text = ""; rainbowCheck.Font = Enum.Font.GothamBold; rainbowCheck.TextSize = 14; rainbowCheck.TextColor3 = WhiteBg; rainbowCheck.BorderSizePixel = 0
+Instance.new("UICorner", rainbowCheck).CornerRadius = UDim.new(0, 5)
+local rainbowCheckMark = Instance.new("TextLabel", rainbowCheck); rainbowCheckMark.Size = UDim2.new(1, 0, 1, 0); rainbowCheckMark.BackgroundTransparency = 1; rainbowCheckMark.Text = ""; rainbowCheckMark.Font = Enum.Font.GothamBold; rainbowCheckMark.TextColor3 = WhiteBg; rainbowCheckMark.Visible = false
+local rainbowState = false
+rainbowCheck.MouseButton1Click:Connect(function() rainbowState = not rainbowState; rainbowCheckMark.Text = rainbowState and "✓" or ""; rainbowCheckMark.Visible = rainbowState; rainbowCheck.BackgroundColor3 = rainbowState and RedBorder or RedDark; PlasmaTrails.RainbowTrail = rainbowState; if rainbowState then setupRainbowTrail() else if _G.RainbowTrailLoop then _G.RainbowTrailLoop:Disconnect(); _G.RainbowTrailLoop = nil; _G.lastTrailRainbowUpdate = nil end; local h = 0 / 1000; PlasmaTrails.TrailColor = Color3.fromHSV(h, 1, 1); if last_ball then Plasma.update_trail_colors(last_ball) end end end)
+PlasmaTrails.TrailColor = Color3.fromRGB(255, 105, 180); _G.rainbowTrailSpeed = 0.5
+Content.CanvasSize = UDim2.new(0, 0, 0, currentOrder * 38)
 
-divider(); section("-- FLY --")
-toggle("Fly", false, function(v)
-    getgenv().FlySpeed = 50
-    if v then
-        local char = LocalPlayer.Character; if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-        local bv = Instance.new("BodyVelocity"); bv.MaxForce = Vector3.new(1e4,1e4,1e4); bv.P = 1e4; bv.Velocity = Vector3.new(); bv.Parent = hrp
-        local bg = Instance.new("BodyGyro"); bg.MaxTorque = Vector3.new(1e4,1e4,1e4); bg.P = 1e4; bg.CFrame = hrp.CFrame; bg.Parent = hrp
-        getgenv().flyConn = RunService.Heartbeat:Connect(function()
-            if not getgenv().flying then return end
-            local speed = getgenv().FlySpeed or 50; local dir = Vector3.new(); local cam = workspace.CurrentCamera
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector * speed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector * speed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector * speed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector * speed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, speed, 0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir = dir - Vector3.new(0, speed, 0) end
-            bv.Velocity = dir; bg.CFrame = cam.CFrame
-        end); getgenv().flying = true
-    else
-        getgenv().flying = false
-        if getgenv().flyConn then getgenv().flyConn:Disconnect(); getgenv().flyConn = nil end
-        local char = LocalPlayer.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local bv = hrp:FindFirstChild("BodyVelocity"); local bg = hrp:FindFirstChild("BodyGyro")
-                if bv then bv:Destroy() end; if bg then bg:Destroy() end
+-- ======================== AUTO SPAM PARRY LOOP ========================
+task.spawn(function()
+    while true do task.wait(1/875); if AutoSpamParry and remote and f_raw then fireParry() end end
+end)
+
+-- ======================== KEYBINDS ========================
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == keyAutoParry then
+        AutoParry = not AutoParry
+        parried_balls = {}
+        notify("Kittylol", "Auto Parry: " .. (AutoParry and "ON" or "OFF"))
+    elseif input.KeyCode == keyShowPeak then
+        ShowPeak = not ShowPeak
+        PFrame.Visible = ShowPeak
+    elseif input.KeyCode == keySpam then
+        if ManualSpam then
+            spamActive = not spamActive
+            SpamToggle.Text = "SPAM: " .. (spamActive and "ON" or "OFF")
+            SpamToggle.BackgroundColor3 = spamActive and RedBorder or RedDark
+        end
+    elseif input.KeyCode == keyAutoSpamParry then
+        AutoSpamParry = not AutoSpamParry
+        getgenv().animationfix = AutoSpamParry
+        if AutoSpamParry then
+            notify("Auto Spam", "ON")
+        else
+            notify("Auto Spam", "OFF")
+        end
+        notify("Kittylol", "Auto Spam Parry: " .. (AutoSpamParry and "ON" or "OFF"))
+    elseif input.KeyCode == Enum.KeyCode.X then
+        getgenv().AbilityESP = not getgenv().AbilityESP
+        for _, label in pairs(billboardLabels) do
+            if label then
+                label.Visible = getgenv().AbilityESP
             end
         end
+        notify("Kittylol", "Ability ESP: " .. (getgenv().AbilityESP and "ON" or "OFF"))
     end
 end)
 
-local flyH = Instance.new("Frame", Content)
-flyH.Size = UDim2.new(1, -10, 0, 34); flyH.BackgroundTransparency = 1
-flyH.LayoutOrder = order; order = order + 1
-numInput(flyH, "Fly Speed", 50, 10, 200, function(v) getgenv().FlySpeed = v end)
+notify("Kittylol paid", "remote loading")
 
-divider(); section("-- MOVEMENT --")
-toggle("Infinite Jump", false, function(v)
-    getgenv().InfiniteJumpEnabled = v
-    if v then
-        getgenv().InfJumpConn = UserInputService.JumpRequest:Connect(function()
-            if getgenv().InfiniteJumpEnabled then
-                local char = LocalPlayer.Character
-                if char and char:FindFirstChildOfClass("Humanoid") then
-                    char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+local function fireParry()
+    if not (remote and f_raw) then return end
+    local cam = workspace.CurrentCamera
+    local char = LocalPlayer.Character
+    local camCF = cam.CFrame
+    local viewportSize = cam.ViewportSize
+    local mousePos = {viewportSize.X / 2, viewportSize.Y / 2}
+    local events = {}
+    if workspace:FindFirstChild("Alive") then
+        for _, v in ipairs(workspace.Alive:GetChildren()) do
+            if v ~= char and v.PrimaryPart then
+                local screenPos, isOnScreen = cam:WorldToScreenPoint(v.PrimaryPart.Position)
+                if isOnScreen then
+                    events[tostring(v)] = screenPos
                 end
             end
-        end)
-    elseif getgenv().InfJumpConn then getgenv().InfJumpConn:Disconnect(); getgenv().InfJumpConn = nil end
-end)
+        end
+    end
+    c[3] = camCF.LookVector
+    c[4] = camCF
+    c[5] = events
+    c[6] = mousePos
+    pcall(function()
+        f_raw(remote, unpack(c))
+    end)
+end
 
-toggle("Jump Power", false, function(v)
+RunService.Heartbeat:Connect(function()
+    local ballContainer = workspace:FindFirstChild("Balls")
+    local ball = ballContainer and ballContainer:GetChildren()[1]
     local char = LocalPlayer.Character
-    if char and char:FindFirstChild("Humanoid") then char.Humanoid.UseJumpPower = true; char.Humanoid.JumpPower = v and 50 or 50 end
-end)
-
-toggle("Gravity", false, function(v) workspace.Gravity = v and 50 or 196.2 end)
-
-divider(); section("-- VISUALS --")
-toggle("Ball Stats", false, function(v) ShowPeak = v; PFrame.Visible = v end)
-toggle("Ability ESP", false, function(v)
-    getgenv().AbilityESP = v
-    for _, l in pairs(billboardLabels) do if l then l.Visible = v end end
-end)
-
-divider(); section("-- ANTI LAG --")
-toggle("Anti Lag", false, function(v)
-    if v then
-        for _, o in ipairs(workspace:GetDescendants()) do
-            if o:IsA("BasePart") and not (o:FindFirstAncestorWhichIsA("Model") and o:FindFirstAncestorWhichIsA("Model"):FindFirstChild("Humanoid")) then
-                originalMaterials[o] = o.Material; o.Material = Enum.Material.SmoothPlastic
-            elseif o:IsA("Decal") or o:IsA("Texture") then
-                table.insert(originalDecalsTextures, {o, o.Parent}); o.Parent = nil
-            elseif o:IsA("ParticleEmitter") or o:IsA("Smoke") or o:IsA("Fire") or o:IsA("Sparkles") then
-                o.Enabled = false
-            end
-        end
-    else
-        for o, m in pairs(originalMaterials) do if o and o.Parent then pcall(function() o.Material = m end) end end
-        for _, d in pairs(originalDecalsTextures) do if d[1] and d[2] then pcall(function() d[1].Parent = d[2] end) end end
-        originalMaterials = {}; originalDecalsTextures = {}
-    end
-end)
-
-divider(); section("-- FAKE WIN STREAK --")
-toggle("Fake Win Streak", false, function(v) groupEnabled = v; notify("Kittylol", "Fake Win Streak: " .. (v and "ON" or "OFF")) end)
-
-local streakH = Instance.new("Frame", Content)
-streakH.Size = UDim2.new(1, -10, 0, 34); streakH.BackgroundTransparency = 1
-streakH.LayoutOrder = order; order = order + 1
-numInput(streakH, "Streak Value", 100, 1, 9999, function(v) fakeStreakValue = v end)
-
-divider(); section("-- BALL TRAIL --")
-toggle("Ball Trail", false, function(v)
-    PlasmaTrails.Enabled = v
-    if not v and last_ball then Plasma.cleanup_trails(last_ball); last_ball = nil end
-end)
-
-local trailH = Instance.new("Frame", Content)
-trailH.Size = UDim2.new(1, -10, 0, 34); trailH.BackgroundTransparency = 1
-trailH.LayoutOrder = order; order = order + 1
-numInput(trailH, "Trail Count", 10, 1, 160, function(v) PlasmaTrails.NumTrails = v end)
-
--- BALL TRAIL PLASMA
-local Plasma = {trail_containers = {}, trail_parts = {}}
-function Plasma.cleanup_trails(ball)
-    if not ball then return end
-    if Plasma.trail_containers[ball] then Plasma.trail_containers[ball]:Destroy(); Plasma.trail_containers[ball] = nil end
-    Plasma.trail_parts[ball] = nil
-end
-function Plasma.create_trails(ball)
-    Plasma.cleanup_trails(ball)
-    local c = Instance.new("Folder"); c.Name = "Trail_" .. ball.Name; c.Parent = ball
-    Plasma.trail_containers[ball] = c
-    local parts = {}
-    for i = 1, PlasmaTrails.NumTrails do
-        local p = Instance.new("Part"); p.Size = Vector3.new(0.5, 0.5, 0.5)
-        p.Shape = Enum.PartType.Ball; p.Material = Enum.Material.Neon; p.Color = PlasmaTrails.TrailColor
-        p.Transparency = 0.2 + (i / PlasmaTrails.NumTrails) * 0.6; p.Anchored = true; p.CanCollide = false; p.Parent = c
-        table.insert(parts, {part = p, offset = i * 0.3})
-    end
-    Plasma.trail_parts[ball] = parts
-end
-
-RunService.Heartbeat:Connect(function()
-    if not PlasmaTrails.Enabled then return end
-    local bc = workspace:FindFirstChild("Balls"); local ball = bc and bc:GetChildren()[1]
-    if ball and ball:IsA("BasePart") then
-        if ball ~= last_ball then if last_ball then Plasma.cleanup_trails(last_ball) end; last_ball = ball; Plasma.create_trails(ball) end
-        local parts = Plasma.trail_parts[ball]
-        if parts then
-            local vel = ball.Velocity; local pos = ball.Position
-            for _, tp in ipairs(parts) do tp.part.CFrame = CFrame.new(pos - (vel * tp.offset)) end
-        end
-    elseif last_ball then Plasma.cleanup_trails(last_ball); last_ball = nil end
-end)
-
--- ===================== MAIN LOOP =====================
-RunService.Heartbeat:Connect(function()
-    local bc = workspace:FindFirstChild("Balls"); local ball = bc and bc:GetChildren()[1]
-    local char = LocalPlayer.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local cam = workspace.CurrentCamera
 
     if ball and ball:IsA("BasePart") and hrp then
         local vel = ball.Velocity.Magnitude
         if ShowPeak then
             VLabel.Text = "Cur: " .. string.format("%.1f", vel)
-            if vel > peakVel then peakVel = vel; PLabel.Text = "Peak: " .. string.format("%.1f", peakVel) end
+            if vel > peakVel then
+                peakVel = vel
+                PLabel.Text = "Peak: " .. string.format("%.1f", peakVel)
+            end
         end
         if AutoParry and remote and f_raw then
-            local bid = ball:GetDebugId()
-            if not parried_balls[bid] then
-                local t = ball:GetAttribute("target") or ball:GetAttribute("Target")
-                local mine = (t == LocalPlayer.Name) or (t == LocalPlayer.UserId) or (t == tostring(LocalPlayer.UserId))
-                if mine then
-                    local dist = (hrp.Position - ball.Position).Magnitude
-                    if dist <= 20 then fireParry(); parried_balls[bid] = true; task.delay(2, function() parried_balls[bid] = nil end) end
+            local bID = ball:GetDebugId()
+            if not parried_balls[bID] then
+                local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("targetPlayer") or ball:GetAttribute("TargetPlayer")
+                local isMyBall = (target == LocalPlayer.Name) or (target == LocalPlayer.UserId) or (target == tostring(LocalPlayer.UserId))
+                if isMyBall then
+                    local Zoomies = ball:FindFirstChild("zoomies")
+                    local shouldParry = false
+                    if Zoomies then
+                        local Velocity = Zoomies.VectorVelocity
+                        local Direction = (hrp.Position - ball.Position).Unit
+                        local Dot = Direction:Dot(Velocity.Unit)
+                        local Ping = (StatsService.Network.ServerStatsItem["Data Ping"]:GetValue() or 100) / 1000
+                        if Dot >= (0.5 - Ping) then
+                            local dist = (hrp.Position - ball.Position).Magnitude
+                            local threshold = (Velocity.Magnitude / 3.25) + (Ping * 10)
+                            if dist <= threshold or dist <= 15 then
+                                shouldParry = true
+                            end
+                        end
+                    else
+                        local dist = (hrp.Position - ball.Position).Magnitude
+                        if dist <= 15 then
+                            shouldParry = true
+                        end
+                    end
+                    if shouldParry then
+                        fireParry()
+                        parried_balls[bID] = true
+                        ball:GetAttributeChangedSignal("target"):Once(function()
+                            parried_balls[bID] = nil
+                        end)
+                    end
                 end
             end
         end
-    elseif ShowPeak then VLabel.Text = "Cur: 0.0" end
-
-    if ManualSpam and spamActive and remote and f_raw then
-        local n = tick()
-        if n - lastSpamTime >= spamInterval then lastSpamTime = n; fireParry() end
-    end
-end)
-
-task.spawn(function()
-    while true do task.wait(1/875); if AutoSpamParry and remote and f_raw then fireParry() end end
-end)
-
--- KEYBINDS
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.T then
-        AutoParry = not AutoParry; parried_balls = {}; notify("Kittylol", "Auto Parry: " .. (AutoParry and "ON" or "OFF"))
-    elseif input.KeyCode == Enum.KeyCode.E then
-        ShowPeak = not ShowPeak; PFrame.Visible = ShowPeak
-    elseif input.KeyCode == Enum.KeyCode.Q and ManualSpam then
-        spamActive = not spamActive; SpamToggle.Text = "SPAM: " .. (spamActive and "ON" or "OFF"); SpamToggle.BackgroundColor3 = spamActive and C.Border or C.Dark
-    elseif input.KeyCode == Enum.KeyCode.Y then
-        AutoSpamParry = not AutoSpamParry; notify("Kittylol", "Auto Spam Parry: " .. (AutoSpamParry and "ON" or "OFF"))
-    elseif input.KeyCode == Enum.KeyCode.X then
-        getgenv().AbilityESP = not getgenv().AbilityESP
-        for _, l in pairs(billboardLabels) do if l then l.Visible = getgenv().AbilityESP end end
-    end
-end)
-
--- ABILITY ESP
-local function createESP(p)
-    local char = p.Character
-    while not char or not char.Parent do task.wait(); char = p.Character end
-    local head = char:WaitForChild("Head")
-    local bg = Instance.new("BillboardGui", head); bg.Name = "ESP"; bg.Adornee = head
-    bg.Size = UDim2.new(0, 200, 0, 50); bg.StudsOffset = Vector3.new(0, 3, 0); bg.AlwaysOnTop = true
-    local tl = Instance.new("TextLabel", bg); tl.Size = UDim2.new(1, 0, 1, 0)
-    tl.TextColor3 = C.Text; tl.TextSize = 8; tl.TextStrokeTransparency = 0; tl.BackgroundTransparency = 1
-    tl.Visible = getgenv().AbilityESP; billboardLabels[p] = tl
-    local hum = char:FindFirstChild("Humanoid")
-    if hum then hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end
-    RunService.Heartbeat:Connect(function()
-        if not tl or not tl.Parent then return end; tl.Visible = getgenv().AbilityESP
-        if getgenv().AbilityESP then
-            local ab = p:GetAttribute("EquippedAbility")
-            tl.Text = ab and (p.DisplayName .. " [" .. ab .. "]") or p.DisplayName
+    else
+        if ShowPeak then
+            VLabel.Text = "Cur: 0.0"
         end
-    end)
-end
-for _, p in pairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer then p.CharacterAdded:Connect(function() createESP(p) end); if p.Character then task.spawn(createESP, p) end end
-end
-Players.PlayerAdded:Connect(function(p) p.CharacterAdded:Connect(function() createESP(p) end) end)
+    end
+    if ManualSpam and spamActive and remote and f_raw then
+        local now = tick()
+        if now - lastSpamTime >= spamInterval then
+            lastSpamTime = now
+            fireParry()
+        end
+    end
+end)
 
-Content.CanvasSize = UDim2.new(0, 0, 0, order * 38)
+RunService.Heartbeat:Connect(function()
+    local currentOptions = getPlayerNames()
+    table.sort(currentOptions)
+    local currentString = table.concat(currentOptions, ",")
+    
+    if currentString ~= lastOptionsString then
+        lastOptionsString = currentString
+    end
+end)
+
+-- Emote dropdown selection (cycle through emotes)
+emoteDropdownBtn.MouseButton1Click:Connect(function()
+    local currentIdx = 0
+    for i, name in ipairs(emotes_data) do
+        if name == selected_animation then
+            currentIdx = i
+            break
+        end
+    end
+    local nextIdx = (currentIdx % #emotes_data) + 1
+    selected_animation = emotes_data[nextIdx]
+    emoteDropdownLbl.Text = "Emote: " .. selected_animation
+    
+    if emotesState then
+        animation_system.play(selected_animation)
+    end
+end)
 
 print("Kittylol paid loaded successfully!")
-notify("Kittylol paid", "Script loaded ✅ - Bấm vào thanh trên cùng để mở GUI")
+notify("Kittylol paid", "Script loaded ✅ - Nút [+] để mở GUI, [-] để thu nhỏ")
