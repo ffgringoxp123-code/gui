@@ -1,0 +1,728 @@
+local FoxnameUI = {}
+
+local TweenService = game:GetService("TweenService")
+local UIS = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local ContentProvider = game:GetService("ContentProvider")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local StatsService = game:GetService("Stats")
+local VIM = game:GetService("VirtualInputManager")
+
+-- ===================== THEME =====================
+local Theme = {
+    Name = "Kittylol preminum",
+    Accent = Color3.fromRGB(255, 105, 180),
+    Accent2 = Color3.fromRGB(255, 182, 193),
+    Background = Color3.fromRGB(255, 192, 203),
+    Surface = Color3.fromRGB(255, 182, 193),
+    Surface2 = Color3.fromRGB(255, 218, 225),
+    Surface3 = Color3.fromRGB(255, 200, 210),
+    Text = Color3.fromRGB(60, 20, 40),
+    MutedText = Color3.fromRGB(120, 60, 80),
+    Border = Color3.fromRGB(200, 50, 100),
+    Success = Color3.fromRGB(80, 210, 120),
+    Danger = Color3.fromRGB(240, 90, 90),
+}
+local NotifyHost = nil
+
+-- ===================== GIF & BACKGROUND =====================
+local GIF_IDS = {
+    "119074790388219", "115672794096960", "71738870122726",
+    "118412167563569", "137807993707113", "88762654041910",
+    "129594193999212", "93903492440603", "137536008841598",
+}
+local BACKGROUND_IMAGE_ID = "89021079722678"
+
+local function preloadAsset(id)
+    pcall(function() ContentProvider:PreloadAsync({"rbxassetid://" .. id}) end)
+end
+preloadAsset(BACKGROUND_IMAGE_ID)
+for _, gifId in ipairs(GIF_IDS) do preloadAsset(gifId) end
+
+-- ===================== VARIABLES =====================
+local remote, f_raw = nil, nil
+local c = {nil, nil, nil, nil, nil, nil, nil}
+local AutoParry, ShowPeak, ManualSpam, AutoSpamParry, BallTrail, AntiLag = false, false, false, false, false, false
+local peakVel = 0
+local spamActive = false
+local lastSpamTime = 0
+local spamInterval = 1/875
+local remoteHooked = false
+local parried_balls = {}
+local billboardLabels = {}
+local last_ball = nil
+local keyAutoParry = Enum.KeyCode.T
+local keyShowPeak = Enum.KeyCode.E
+local keySpam = Enum.KeyCode.Q
+local keyAutoSpamParry = Enum.KeyCode.Y
+getgenv().AbilityESP = false
+local fakeStreakValue = 0
+local groupEnabled = false
+local icono = "rbxassetid://89658127170771"
+local iconb = "rbxassetid://75598166115655"
+local SelectedPlayerFollow = nil
+
+-- ===================== EMOTES =====================
+local emotes_data = {"Dance", "Wave", "Point", "Sit", "Laugh", "Clap", "Cheer"}
+local selected_animation = emotes_data[1]
+local animation_system = {
+    current = nil, running = false,
+    start = function() animation_system.running = true end,
+    play = function(anim)
+        if animation_system.current then animation_system.current:Stop() end
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            local track = char.Humanoid:LoadAnimation(Instance.new("Animation"))
+            track.Animation.AnimationId = "rbxassetid://" .. tostring(anim)
+            track:Play()
+            animation_system.current = track
+        end
+    end,
+    cleanup = function()
+        if animation_system.current then animation_system.current:Stop(); animation_system.current = nil end
+        animation_system.running = false
+    end
+}
+
+-- ===================== AUTO JUMP =====================
+getgenv().autojump = false
+local lastJump = 0
+RunService.Heartbeat:Connect(function()
+    if not getgenv().autojump then return end
+    if tick() - lastJump >= 0.6 then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                lastJump = tick()
+            end
+        end
+    end
+end)
+
+-- ===================== FLY =====================
+getgenv().flying = false
+PlayerModules = PlayerModules or {}
+PlayerModules.ModuleFly = PlayerModules.ModuleFly or function(state)
+    getgenv().flying = state
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if state then
+        local bv = Instance.new("BodyVelocity"); bv.MaxForce = Vector3.new(10000,10000,10000); bv.P = 10000; bv.Parent = hrp
+        local bg = Instance.new("BodyGyro"); bg.MaxTorque = Vector3.new(10000,10000,10000); bg.P = 10000; bg.CFrame = hrp.CFrame; bg.Parent = hrp
+        getgenv().flyConnection = RunService.Heartbeat:Connect(function()
+            if not getgenv().flying then return end
+            local speed = getgenv().FlySpeed or 50
+            local moveDir = Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + workspace.CurrentCamera.CFrame.LookVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - workspace.CurrentCamera.CFrame.LookVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - workspace.CurrentCamera.CFrame.RightVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + workspace.CurrentCamera.CFrame.RightVector * speed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,speed,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0,speed,0) end
+            bv.Velocity = moveDir; bg.CFrame = workspace.CurrentCamera.CFrame
+        end)
+    else
+        if getgenv().flyConnection then getgenv().flyConnection:Disconnect(); getgenv().flyConnection = nil end
+        local bv = hrp:FindFirstChild("BodyVelocity"); local bg = hrp:FindFirstChild("BodyGyro")
+        if bv then bv:Destroy() end; if bg then bg:Destroy() end
+    end
+end
+
+-- ===================== HIT SOUNDS =====================
+local hit_Sound_Enabled = false
+local hit_Sound = Instance.new("Sound", workspace)
+hit_Sound.Name = "HitSoundUtility"; hit_Sound.Volume = 5
+local hitSoundIds = {
+    Medal = "rbxassetid://6607336718", Fatality = "rbxassetid://6607113255",
+    Skeet = "rbxassetid://6607204501", Switches = "rbxassetid://6607173363",
+    ["Rust Headshot"] = "rbxassetid://138750331387064",
+    ["Neverlose Sound"] = "rbxassetid://110168723447153",
+}
+game:GetService("ReplicatedStorage").Remotes.ParrySuccess.OnClientEvent:Connect(function()
+    if hit_Sound_Enabled then hit_Sound:Play() end
+end)
+
+-- ===================== REMOTE HOOK =====================
+local mt = getrawmetatable(game)
+local old = mt.__index
+setreadonly(mt, false)
+mt.__index = newcclosure(function(self, key)
+    if key == "FireServer" or key == "InvokeServer" then
+        return function(instance, ...)
+            local args = {...}
+            if #args >= 4 then
+                if not remoteHooked then remoteHooked = true end
+                remote = instance; f_raw = old(instance, "FireServer")
+                for i = 1, 7 do c[i] = args[i] end
+            end
+            return old(self, key)(instance, ...)
+        end
+    end
+    return old(self, key)
+end)
+setreadonly(mt, true)
+
+-- ===================== PARRY FIRE =====================
+local function fireParry()
+    if not (remote and f_raw) then return end
+    local cam = workspace.CurrentCamera
+    local char = LocalPlayer.Character
+    local camCF = cam.CFrame
+    local viewportSize = cam.ViewportSize
+    local mousePos = {viewportSize.X / 2, viewportSize.Y / 2}
+    local events = {}
+    if workspace:FindFirstChild("Alive") then
+        for _, v in ipairs(workspace.Alive:GetChildren()) do
+            if v ~= char and v.PrimaryPart then
+                local screenPos, isOnScreen = cam:WorldToScreenPoint(v.PrimaryPart.Position)
+                if isOnScreen then events[tostring(v)] = screenPos end
+            end
+        end
+    end
+    c[3] = camCF.LookVector; c[4] = camCF; c[5] = events; c[6] = mousePos
+    pcall(function() f_raw(remote, unpack(c)) end)
+end
+
+-- ===================== ABILITY ESP =====================
+local function createBillboardGui(p)
+    local character = p.Character
+    while not character or not character.Parent do task.wait(); character = p.Character end
+    local head = character:WaitForChild("Head")
+    local bg = Instance.new("BillboardGui"); bg.Name = "AbilityESP_Gui"; bg.Adornee = head
+    bg.Size = UDim2.new(0,200,0,50); bg.StudsOffset = Vector3.new(0,3,0); bg.AlwaysOnTop = true; bg.Parent = head
+    local tl = Instance.new("TextLabel"); tl.Size = UDim2.new(1,0,1,0); tl.TextColor3 = Theme.Text
+    tl.TextSize = 8; tl.TextStrokeTransparency = 0; tl.BackgroundTransparency = 1; tl.Parent = bg
+    tl.Visible = getgenv().AbilityESP
+    billboardLabels[p] = tl
+    local humanoid = character:FindFirstChild("Humanoid")
+    if humanoid then humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end
+    local conn = RunService.Heartbeat:Connect(function()
+        if not (character and character.Parent) then conn:Disconnect(); bg:Destroy(); billboardLabels[p] = nil; return end
+        tl.Visible = getgenv().AbilityESP
+        if getgenv().AbilityESP then
+            local ability = p:GetAttribute("EquippedAbility")
+            tl.Text = ability and (p.DisplayName .. " [" .. ability .. "]") or p.DisplayName
+        end
+    end)
+end
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then
+        p.CharacterAdded:Connect(function() createBillboardGui(p) end)
+        if p.Character then task.spawn(createBillboardGui, p) end
+    end
+end
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function() createBillboardGui(p) end)
+end)
+
+-- ===================== ANTI LAG =====================
+local originalMaterials = {}
+local originalDecalsTextures = {}
+local function applyAntiLag(state)
+    if state then
+        for _, O in ipairs(workspace:GetDescendants()) do
+            if O:IsA("BasePart") and not (O:FindFirstAncestorWhichIsA("Model") and O:FindFirstAncestorWhichIsA("Model"):FindFirstChild("Humanoid")) then
+                originalMaterials[O] = O.Material; O.Material = Enum.Material.SmoothPlastic
+            elseif O:IsA("Decal") or O:IsA("Texture") then
+                table.insert(originalDecalsTextures, {Object = O, Parent = O.Parent}); O.Parent = nil
+            elseif O:IsA("ParticleEmitter") or O:IsA("Smoke") or O:IsA("Fire") or O:IsA("Sparkles") then
+                O.Enabled = false
+            end
+        end
+    else
+        for O, mat in pairs(originalMaterials) do if O and O.Parent then pcall(function() O.Material = mat end) end end
+        for _, d in pairs(originalDecalsTextures) do if d.Object and d.Parent then pcall(function() d.Object.Parent = d.Parent end) end end
+        originalMaterials = {}; originalDecalsTextures = {}
+    end
+end
+
+-- ===================== FAKE STREAK =====================
+local function formatNumber(num)
+    local formatted = tostring(num)
+    while true do local k; formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1,%2'); if k == 0 then break end end
+    return formatted
+end
+local function getIconImage(num) return num >= 10 and iconb or icono end
+local function getDisplay()
+    for _, folderName in ipairs({"Dead","Alive"}) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then
+            local char = folder:FindFirstChild(LocalPlayer.Name)
+            if char then
+                local display = char:FindFirstChild("WinStreakDisplay")
+                if display then return char, display end
+            end
+        end
+    end
+    return nil, nil
+end
+local function clearFake()
+    local char = getDisplay()
+    if char then local old = char:FindFirstChild("FakeStreakBillboard"); if old then old:Destroy() end end
+end
+local function applyFake(num)
+    if not groupEnabled or num < 1 then clearFake(); return end
+    local char, display = getDisplay()
+    if not char or not display then return end
+    local head = display.Adornee or char:FindFirstChild("Head")
+    if not head then return end
+    display.Enabled = false
+    local old = char:FindFirstChild("FakeStreakBillboard"); if old then old:Destroy() end
+    local bb = Instance.new("BillboardGui"); bb.Name = "FakeStreakBillboard"; bb.Adornee = head
+    bb.AlwaysOnTop = true; bb.Size = UDim2.new(5,0,1.5,0); bb.StudsOffsetWorldSpace = Vector3.new(0,2,0); bb.MaxDistance = 120; bb.Parent = char
+    local main = Instance.new("Frame", bb); main.BackgroundTransparency = 1; main.Size = UDim2.new(0.9,0,0.75,0)
+    main.Position = UDim2.new(0.5,0,1,0); main.AnchorPoint = Vector2.new(0.5,1)
+    local icon = Instance.new("ImageLabel", main); icon.BackgroundTransparency = 1; icon.Size = UDim2.new(1.25,0,1.25,0)
+    icon.Position = UDim2.new(0.5,0,0.9,0); icon.AnchorPoint = Vector2.new(0.5,1); icon.Image = getIconImage(num)
+    Instance.new("UIAspectRatioConstraint", icon)
+    local label = Instance.new("TextLabel", main); label.BackgroundTransparency = 1; label.Size = UDim2.new(1.5,0,0.8,0)
+    label.Position = UDim2.new(0.5,0,0.9,0); label.AnchorPoint = Vector2.new(0.5,1); label.Font = Enum.Font.SourceSansBold
+    label.TextScaled = true; label.TextColor3 = Color3.new(0.9,0.9,0.9); label.RichText = true
+    label.Text = "<b><stroke color='rgb(0,0,0)' thickness='2'>" .. formatNumber(num) .. "</stroke></b>"
+    Instance.new("UIPadding", label); Instance.new("UIAspectRatioConstraint", label)
+end
+
+-- ===================== BALL TRAIL =====================
+local PlasmaTrails = {Enabled = false, NumTrails = 10, TrailColor = Color3.fromRGB(255,105,180), RainbowTrail = false, RainbowSpeed = 0.5}
+local Plasma = {trail_containers = {}, trail_parts = {}}
+function Plasma.cleanup_trails(ball)
+    if not ball then return end
+    local container = Plasma.trail_containers[ball]
+    if container then
+        for _, part in ipairs(container:GetChildren()) do if part:IsA("Part") or part:IsA("Attachment") then part:Destroy() end end
+        container:Destroy(); Plasma.trail_containers[ball] = nil
+    end
+    Plasma.trail_parts[ball] = nil
+end
+function Plasma.create_trails(ball)
+    if not ball then return end; Plasma.cleanup_trails(ball)
+    local container = Instance.new("Folder"); container.Name = "BallTrails_" .. ball.Name; container.Parent = ball
+    Plasma.trail_containers[ball] = container
+    local trailParts = {}
+    for i = 1, PlasmaTrails.NumTrails do
+        local trail = Instance.new("Part"); trail.Size = Vector3.new(0.5,0.5,0.5); trail.Shape = Enum.PartType.Ball
+        trail.Material = Enum.Material.Neon; trail.Color = PlasmaTrails.TrailColor
+        trail.Transparency = 0.2 + (i / PlasmaTrails.NumTrails) * 0.6; trail.Anchored = true; trail.CanCollide = false; trail.Parent = container
+        local att = Instance.new("Attachment", trail); att.Name = "BallAttach"
+        table.insert(trailParts, {part = trail, offset = i * 0.3})
+    end
+    Plasma.trail_parts[ball] = trailParts
+end
+function Plasma.update_trail_colors(ball)
+    if not ball or not Plasma.trail_parts[ball] then return end
+    for _, tp in ipairs(Plasma.trail_parts[ball]) do tp.part.Color = PlasmaTrails.TrailColor end
+end
+local trailConnection = RunService.Heartbeat:Connect(function()
+    if not PlasmaTrails.Enabled then return end
+    local ballContainer = workspace:FindFirstChild("Balls")
+    local ball = ballContainer and ballContainer:GetChildren()[1]
+    if ball and ball:IsA("BasePart") then
+        if ball ~= last_ball then
+            if last_ball then Plasma.cleanup_trails(last_ball) end
+            last_ball = ball; Plasma.create_trails(ball)
+        end
+        local trailParts = Plasma.trail_parts[ball]
+        if trailParts then
+            local vel = ball.Velocity; local pos = ball.Position
+            for _, tp in ipairs(trailParts) do
+                local targetPos = pos - (vel * tp.offset)
+                tp.part.CFrame = CFrame.new(targetPos)
+            end
+        end
+    else
+        if last_ball then Plasma.cleanup_trails(last_ball); last_ball = nil end
+    end
+end)
+
+-- ===================== IMMORTALITY =====================
+local Immortality = {Enabled = false, DesyncRadius = 40, DesyncHeight = 50}
+local desyncCFramePositions = {}
+local currentDesyncRotation = 0
+local function GenerateRandomVector(magnitude) return math.random(-magnitude*9e9, magnitude*-1e9) / 5e8 end
+RunService.Stepped:Connect(function()
+    if Immortality.Enabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        pcall(function() LocalPlayer.Character.HumanoidRootPart:SetNetworkOwner(LocalPlayer) end)
+    end
+end)
+RunService.Heartbeat:Connect(function()
+    if Immortality.Enabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        currentDesyncRotation = (currentDesyncRotation + 15) % 360
+        desyncCFramePositions[1] = rootPart.CFrame; desyncCFramePositions[2] = rootPart.AssemblyLinearVelocity
+        local desyncForce = 3000
+        local spoofedCF = rootPart.CFrame * CFrame.Angles(0, math.rad(currentDesyncRotation), 0) + Vector3.new(0, Immortality.DesyncHeight, 0)
+        local hWave = math.sin(tick() * 30) * Immortality.DesyncRadius
+        local vWave = math.cos(tick() * 60) * Immortality.DesyncHeight
+        spoofedCF = spoofedCF * CFrame.new(hWave, vWave, 0) * CFrame.Angles(math.rad(GenerateRandomVector(desyncForce)), math.rad(GenerateRandomVector(desyncForce)), 0)
+        rootPart.CFrame = spoofedCF
+        rootPart.AssemblyLinearVelocity = desyncCFramePositions[2] + Vector3.new(math.cos(tick()*8)*desyncForce, math.cos(tick()*8)*desyncForce, 0)
+        RunService.RenderStepped:Wait()
+        rootPart.CFrame = desyncCFramePositions[1]; rootPart.AssemblyLinearVelocity = desyncCFramePositions[2]
+    end
+end)
+
+-- ===================== LOADING SCREEN =====================
+local guiReady = false
+local function createLoadingScreen()
+    local LoadingGui = Instance.new("ScreenGui", game.CoreGui); LoadingGui.Name = "KittylolLoadingGui"; LoadingGui.ResetOnSpawn = false
+    local LoadingOverlay = Instance.new("Frame", LoadingGui); LoadingOverlay.Size = UDim2.new(1,0,1,0)
+    LoadingOverlay.BackgroundColor3 = Color3.fromRGB(0,0,0); LoadingOverlay.BackgroundTransparency = 0.5; LoadingOverlay.BorderSizePixel = 0; LoadingOverlay.ZIndex = 999
+    local LoadingBox = Instance.new("Frame", LoadingGui); LoadingBox.Size = UDim2.new(0,220,0,130)
+    LoadingBox.Position = UDim2.new(0.5,-110,0.5,-65); LoadingBox.BackgroundColor3 = Theme.Surface; LoadingBox.BorderSizePixel = 0; LoadingBox.ZIndex = 1000
+    Instance.new("UICorner", LoadingBox).CornerRadius = UDim.new(0,18)
+    local stroke = Instance.new("UIStroke", LoadingBox); stroke.Color = Theme.Border; stroke.Thickness = 2.5
+    local title = Instance.new("TextLabel", LoadingBox); title.Size = UDim2.new(1,0,0,35); title.Position = UDim2.new(0,0,0,8)
+    title.BackgroundTransparency = 1; title.Text = "Kittylol paid"; title.Font = Enum.Font.GothamBold; title.TextSize = 22; title.TextColor3 = Theme.Text
+    local sub = Instance.new("TextLabel", LoadingBox); sub.Size = UDim2.new(1,0,0,20); sub.Position = UDim2.new(0,0,0,43)
+    sub.BackgroundTransparency = 1; sub.Text = "Loading..."; sub.Font = Enum.Font.Gotham; sub.TextSize = 11; sub.TextColor3 = Theme.MutedText
+    local barBg = Instance.new("Frame", LoadingBox); barBg.Size = UDim2.new(0.8,0,0,12); barBg.Position = UDim2.new(0.1,0,0,75)
+    barBg.BackgroundColor3 = Theme.Surface2; barBg.BorderSizePixel = 0; Instance.new("UICorner", barBg).CornerRadius = UDim.new(0,6)
+    local bar = Instance.new("Frame", barBg); bar.Size = UDim2.new(0,0,1,0); bar.BackgroundColor3 = Theme.Text; bar.BorderSizePixel = 0; Instance.new("UICorner", bar).CornerRadius = UDim.new(0,6)
+    local pct = Instance.new("TextLabel", LoadingBox); pct.Size = UDim2.new(1,0,0,22); pct.Position = UDim2.new(0,0,0,95)
+    pct.BackgroundTransparency = 1; pct.Text = "0%"; pct.Font = Enum.Font.GothamBold; pct.TextSize = 14; pct.TextColor3 = Theme.Text
+    coroutine.wrap(function()
+        for i = 1, 100 do
+            bar:TweenSize(UDim2.new(i/100,0,1,0), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.015, true)
+            pct.Text = i .. "%"
+            sub.Text = i <= 30 and "Initializing..." or (i <= 60 and "Loading modules..." or "Starting...")
+            task.wait(0.015 + (i / 1200))
+        end
+        task.wait(0.2)
+        TweenService:Create(LoadingOverlay, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(LoadingBox, TweenInfo.new(0.4), {Size = UDim2.new(0,0,0,0), BackgroundTransparency = 1}):Play()
+        task.wait(0.4); LoadingGui:Destroy(); guiReady = true
+    end)()
+end
+createLoadingScreen()
+repeat task.wait() until guiReady
+
+-- ===================== NOTIFICATION =====================
+local notifyQueue = {}; local notifyActive = false
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui); ScreenGui.Name = "KittylolGui"; ScreenGui.ResetOnSpawn = false
+local function processQueue()
+    if notifyActive or #notifyQueue == 0 then return end
+    notifyActive = true
+    local item = table.remove(notifyQueue, 1)
+    local frame = Instance.new("Frame", ScreenGui); frame.Size = UDim2.new(0,230,0,55); frame.Position = UDim2.new(1,10,1,-70)
+    frame.BackgroundColor3 = Theme.Surface; frame.BackgroundTransparency = 0.3; frame.BorderSizePixel = 0; frame.ZIndex = 10
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
+    local fstr = Instance.new("UIStroke", frame); fstr.Color = Theme.Border; fstr.Thickness = 2
+    local t = Instance.new("TextLabel", frame); t.Size = UDim2.new(1,-12,0,22); t.Position = UDim2.new(0,10,0,5)
+    t.BackgroundTransparency = 1; t.Font = Enum.Font.GothamBold; t.TextSize = 13; t.TextColor3 = Theme.Text; t.TextXAlignment = Enum.TextXAlignment.Left; t.Text = item.title; t.ZIndex = 11
+    local m = Instance.new("TextLabel", frame); m.Size = UDim2.new(1,-12,0,18); m.Position = UDim2.new(0,10,0,28)
+    m.BackgroundTransparency = 1; m.Font = Enum.Font.Gotham; m.TextSize = 11; m.TextColor3 = Theme.MutedText; m.TextXAlignment = Enum.TextXAlignment.Left; m.Text = item.msg; m.ZIndex = 11
+    TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(1,-240,1,-70)}):Play()
+    task.delay(3, function()
+        TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(1,10,1,-70)}):Play()
+        task.delay(0.35, function() frame:Destroy(); notifyActive = false; processQueue() end)
+    end)
+end
+local function notify(title, msg) table.insert(notifyQueue, {title = title, msg = msg}); processQueue() end
+task.spawn(function() while not remoteHooked do task.wait(0.1) end; notify("Kittylol paid", "remote hooked ✅") end)
+
+-- ===================== MK / TWEEN =====================
+local function mk(class, props)
+    local i = Instance.new(class)
+    for k, v in pairs(props or {}) do i[k] = v end
+    return i
+end
+local function tween(obj, t, props, style, dir)
+    if typeof(obj) ~= "Instance" then return nil end
+    local ti = TweenInfo.new(t or 0.18, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+    local ok, tw = pcall(function() return TweenService:Create(obj, ti, props) end)
+    if ok and tw then tw:Play(); return tw end
+    return nil
+end
+
+-- ===================== GIF ICON =====================
+local function createGIFIcon(parent, ids, size, position, cornerRadius)
+    cornerRadius = cornerRadius or UDim.new(0,0)
+    local container = mk("Frame", {Parent=parent, Size=size or UDim2.new(0,28,0,24), Position=position or UDim2.new(1,-34,0.5,-12), BackgroundTransparency=1, BorderSizePixel=0, ZIndex=5})
+    local currentImage = mk("ImageLabel", {Parent=container, Size=UDim2.new(1,-4,1,-4), Position=UDim2.new(0,2,0,2), BackgroundTransparency=1, Image="rbxassetid://"..ids[1], ScaleType=Enum.ScaleType.Fit, BorderSizePixel=0, ZIndex=container.ZIndex})
+    if cornerRadius ~= UDim.new(0,0) then mk("UICorner", {Parent=currentImage, CornerRadius=cornerRadius}) end
+    local index = 1; local running = true; local con
+    con = RunService.Heartbeat:Connect(function()
+        if not running or not container.Parent then con:Disconnect(); return end
+        index = index + 1; if index > #ids then index = 1 end
+        currentImage.Image = "rbxassetid://" .. ids[index]; task.wait(0.15)
+    end)
+    return container, currentImage, con
+end
+
+-- ===================== ELEMENTS =====================
+local function CreateElements(theme)
+    local Elements = {}; local activeKeybindCapture = nil
+    local function addDesc(parent, text, top, iconOffset)
+        if type(text)~="string" or text=="" then return 0 end
+        local y=top or 28; mk("TextLabel", {Parent=parent, BackgroundTransparency=1, Position=UDim2.new(0,iconOffset or 10,0,y), Size=UDim2.new(1,-(iconOffset or 10)-8,0,14), TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Top, Text=text, TextColor3=theme.MutedText, Font=Enum.Font.Gotham, TextSize=12})
+        return 16
+    end
+    function Elements:Section(parent, cfg) return mk("TextLabel", {Parent=parent, BackgroundTransparency=1, Size=UDim2.new(1,0,0,22), TextXAlignment=Enum.TextXAlignment.Left, Text=cfg.Title or "Section", TextColor3=theme.MutedText, Font=Enum.Font.GothamBold, TextSize=12}) end
+    function Elements:Divider(parent) return mk("Frame", {Parent=parent, Size=UDim2.new(1,0,0,1), BackgroundColor3=theme.Border, BorderSizePixel=0}) end
+    function Elements:Button(parent, cfg)
+        local hasDesc=(cfg.Description and cfg.Description~=""); local cardH=hasDesc and 66 or 40
+        local b=mk("TextButton", {Parent=parent, Size=UDim2.new(1,0,0,cardH), BackgroundColor3=theme.Surface2, BorderSizePixel=0, Text="", AutoButtonColor=false})
+        mk("UICorner", {Parent=b, CornerRadius=UDim.new(0,10)})
+        local stroke=mk("UIStroke", {Parent=b, Color=theme.Border, Thickness=1, Transparency=0.35})
+        local titleY=hasDesc and 10 or 0; local titleH=hasDesc and 20 or cardH
+        mk("TextLabel", {Parent=b, Name="FxLabel", BackgroundTransparency=1, Position=UDim2.new(0,12,0,titleY), Size=UDim2.new(1,-16,0,titleH), TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Center, Text=cfg.Title or "Button", TextColor3=theme.Text, Font=Enum.Font.GothamBold, TextSize=15})
+        if hasDesc then mk("TextLabel", {Parent=b, BackgroundTransparency=1, Position=UDim2.new(0,12,0,34), Size=UDim2.new(1,-16,0,16), TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Top, Text=cfg.Description, TextColor3=theme.MutedText, Font=Enum.Font.GothamMedium, TextSize=12}) end
+        b.MouseEnter:Connect(function() tween(b,0.12,{BackgroundColor3=theme.Surface3}); tween(stroke,0.12,{Transparency=0.05}) end)
+        b.MouseLeave:Connect(function() tween(b,0.12,{BackgroundColor3=theme.Surface2}); tween(stroke,0.12,{Transparency=0.35}) end)
+        b.MouseButton1Click:Connect(function() if cfg.Callback then cfg.Callback() end end)
+        return b
+    end
+    function Elements:Toggle(parent, cfg)
+        local hasDesc=(cfg.Description and cfg.Description~=""); local cardH=hasDesc and 54 or 36; local state=cfg.Value==true
+        local btn=mk("TextButton", {Parent=parent, Size=UDim2.new(1,0,0,cardH), BackgroundColor3=theme.Surface2, BorderSizePixel=0, Text="", AutoButtonColor=false})
+        mk("UICorner", {Parent=btn, CornerRadius=UDim.new(0,10)}); mk("UIStroke", {Parent=btn, Color=theme.Border, Thickness=1, Transparency=0.25})
+        local titleY=hasDesc and 12 or 0; local titleH=hasDesc and 16 or cardH
+        mk("TextLabel", {Parent=btn, Name="FxLabel", BackgroundTransparency=1, Position=UDim2.new(0,12,0,titleY), Size=UDim2.new(1,-52,0,titleH), TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Center, Text=cfg.Title or "Toggle", TextColor3=theme.Text, Font=Enum.Font.GothamBold, TextSize=16})
+        if hasDesc then mk("TextLabel", {Parent=btn, BackgroundTransparency=1, Position=UDim2.new(0,12,0,30), Size=UDim2.new(1,-52,0,14), TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Top, Text=cfg.Description, TextColor3=theme.MutedText, Font=Enum.Font.GothamMedium, TextSize=12}) end
+        local rail=mk("Frame", {Parent=btn, Size=UDim2.new(0,34,0,18), Position=UDim2.new(1,-42,0.5,-9), BorderSizePixel=0, BackgroundColor3=state and theme.Accent or theme.Border})
+        mk("UICorner", {Parent=rail, CornerRadius=UDim.new(1,0)})
+        local knob=mk("Frame", {Parent=rail, Size=UDim2.new(0,14,0,14), Position=state and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7), BorderSizePixel=0, BackgroundColor3=Color3.fromRGB(255,255,255)})
+        mk("UICorner", {Parent=knob, CornerRadius=UDim.new(1,0)})
+        local function sync(animated)
+            local kPos=state and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7); local rCol=state and theme.Accent or theme.Border
+            if animated then tween(knob,0.16,{Position=kPos},Enum.EasingStyle.Back); tween(rail,0.16,{BackgroundColor3=rCol}) else knob.Position=kPos; rail.BackgroundColor3=rCol end
+        end
+        btn.MouseButton1Click:Connect(function() state=not state; sync(true); if cfg.Callback then cfg.Callback(state) end end)
+        sync(false)
+        return {SetValue=function(v) state=v==true; sync(true) end}
+    end
+    function Elements:Slider(parent, cfg)
+        local min=cfg.Min or 0; local max=cfg.Max or 100; local value=cfg.Default or min
+        local hasDesc=(cfg.Description and cfg.Description~=""); local cardH=hasDesc and 64 or 50
+        local holder=mk("Frame", {Parent=parent, Size=UDim2.new(1,0,0,cardH), BackgroundColor3=theme.Surface2, BorderSizePixel=0})
+        mk("UICorner", {Parent=holder, CornerRadius=UDim.new(0,10)}); mk("UIStroke", {Parent=holder, Color=theme.Border, Thickness=1, Transparency=0.25})
+        local titleY=hasDesc and 8 or 6; local titleH=18
+        local label=mk("TextLabel", {Parent=holder, Name="FxLabel", Position=UDim2.new(0,8,0,titleY), Size=UDim2.new(1,-16,0,titleH), BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left, Text=string.format("%s: %s",cfg.Title or "Slider",tostring(value)), TextYAlignment=Enum.TextYAlignment.Center, TextColor3=theme.Text, Font=Enum.Font.GothamBold, TextSize=15, ZIndex=3})
+        addDesc(holder, cfg.Description, 28, 8)
+        local bar=mk("Frame", {Parent=holder, Position=UDim2.new(0,6,0,hasDesc and 44 or 24), Size=UDim2.new(1,-12,0,14), BackgroundColor3=theme.Surface3, BorderSizePixel=0, ZIndex=1})
+        mk("UICorner", {Parent=bar, CornerRadius=UDim.new(0,8)})
+        local fill=mk("Frame", {Parent=bar, Size=UDim2.new((value-min)/math.max(max-min,1),0,1,0), BackgroundColor3=theme.Accent, BorderSizePixel=0, ZIndex=2})
+        mk("UICorner", {Parent=fill, CornerRadius=UDim.new(0,8)})
+        local knob=mk("Frame", {Parent=bar, Size=UDim2.new(0,16,0,16), Position=UDim2.new(fill.Size.X.Scale,-8,0.5,-8), BackgroundColor3=Color3.fromRGB(255,255,255), BorderSizePixel=0, ZIndex=3})
+        mk("UICorner", {Parent=knob, CornerRadius=UDim.new(1,0)}); mk("UIStroke", {Parent=knob, Color=Color3.fromRGB(18,20,28), Thickness=1.2, Transparency=0.15})
+        local dragging=false
+        local function setFromX(x)
+            local p=math.clamp((x-bar.AbsolutePosition.X)/math.max(bar.AbsoluteSize.X,1),0,1); value=math.floor(min+(max-min)*p+0.5)
+            fill.Size=UDim2.new(p,0,1,0); knob.Position=UDim2.new(p,-8,0.5,-8); label.Text=string.format("%s: %s",cfg.Title or "Slider",tostring(value))
+            if cfg.Callback then cfg.Callback(value) end
+        end
+        bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true; setFromX(i.Position.X) end end)
+        bar.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+        UIS.InputChanged:Connect(function(i) if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then setFromX(i.Position.X) end end)
+        return holder
+    end
+    function Elements:Dropdown(parent, cfg)
+        local values=cfg.Values or {}; local multi=cfg.Multi==true
+        local selected=multi and {} or (cfg.Default or values[1] or ""); local headerHeight=36; local expanded=false
+        local holder=mk("Frame", {Parent=parent, Size=UDim2.new(1,0,0,headerHeight), BackgroundTransparency=1, ClipsDescendants=true})
+        local btn=mk("TextButton", {Parent=holder, Size=UDim2.new(1,0,0,headerHeight), BackgroundColor3=theme.Surface2, BorderSizePixel=0, Text="", AutoButtonColor=false})
+        mk("UICorner", {Parent=btn, CornerRadius=UDim.new(0,10)}); mk("UIStroke", {Parent=btn, Color=theme.Border, Thickness=1, Transparency=0.25})
+        local label=mk("TextLabel", {Parent=btn, Name="FxLabel", BackgroundTransparency=1, Position=UDim2.new(0,10,0,0), Size=UDim2.new(1,-36,1,0), TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Center, TextColor3=theme.Text, Font=Enum.Font.GothamBold, TextSize=13})
+        local arrow=mk("TextLabel", {Parent=btn, BackgroundTransparency=1, Size=UDim2.new(0,20,1,0), Position=UDim2.new(1,-26,0,0), Text="v", Font=Enum.Font.GothamBold, TextSize=12, TextColor3=theme.MutedText, TextYAlignment=Enum.TextYAlignment.Center})
+        local panel=mk("Frame", {Parent=holder, Position=UDim2.new(0,0,0,headerHeight+6), Size=UDim2.new(1,0,0,0), BackgroundColor3=theme.Surface2, BorderSizePixel=0, ClipsDescendants=true})
+        mk("UICorner", {Parent=panel, CornerRadius=UDim.new(0,10)}); mk("UIStroke", {Parent=panel, Color=theme.Border, Thickness=1, Transparency=0.25})
+        local layout=mk("UIListLayout", {Parent=panel, Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder})
+        mk("UIPadding", {Parent=panel, PaddingTop=UDim.new(0,6), PaddingBottom=UDim.new(0,6), PaddingLeft=UDim.new(0,6), PaddingRight=UDim.new(0,6)})
+        local optionButtons={}
+        local function updateLabel()
+            if multi then
+                local count=0; local first=nil
+                for k,v in pairs(selected) do if v then count=count+1; first=first or k end end
+                label.Text=count==0 and string.format("%s: None",cfg.Title or "Dropdown") or (count==1 and string.format("%s: %s",cfg.Title or "Dropdown",first) or string.format("%s: %d selected",cfg.Title or "Dropdown",count))
+            else label.Text=string.format("%s: %s",cfg.Title or "Dropdown",tostring(selected)) end
+        end
+        local function applyExpandState(animated)
+            local count=#values; local panelHeight=expanded and (count*30+math.max(count-1,0)*4+12) or 0; local holderHeight=headerHeight+(expanded and (6+panelHeight) or 0)
+            if animated then tween(panel,0.16,{Size=UDim2.new(1,0,0,panelHeight)}); tween(holder,0.16,{Size=UDim2.new(1,0,0,holderHeight)}) else panel.Size=UDim2.new(1,0,0,panelHeight); holder.Size=UDim2.new(1,0,0,holderHeight) end
+            arrow.Text=expanded and "^" or "v"
+        end
+        local function rebuildOptions()
+            for _,b in ipairs(optionButtons) do if b and b.Parent then b:Destroy() end end; optionButtons={}
+            for _,v in ipairs(values) do
+                local opt=mk("TextButton", {Parent=panel, Size=UDim2.new(1,0,0,30), BackgroundColor3=theme.Surface3, BorderSizePixel=0, Text=tostring(v), TextColor3=theme.Text, Font=Enum.Font.GothamSemibold, TextSize=13, AutoButtonColor=false})
+                mk("UICorner", {Parent=opt, CornerRadius=UDim.new(0,8)}); table.insert(optionButtons,opt)
+                opt.MouseButton1Click:Connect(function()
+                    if multi then selected[v]=not selected[v]; if cfg.Callback then cfg.Callback(selected) end
+                    else selected=v; if cfg.Callback then cfg.Callback(selected) end; expanded=false end
+                    updateLabel(); applyExpandState(true)
+                end)
+            end
+        end
+        if multi and type(cfg.Default)=="table" then for _,v in ipairs(cfg.Default) do selected[v]=true end end
+        updateLabel(); rebuildOptions(); applyExpandState(false)
+        btn.MouseButton1Click:Connect(function() if #values==0 then return end; expanded=not expanded; applyExpandState(true) end)
+        return {Refresh=function(newValues) values=newValues or {}; if not multi then selected=values[1] or "" end; rebuildOptions(); updateLabel(); expanded=false; applyExpandState(false) end}
+    end
+    function Elements:Keybind(parent, cfg)
+        local key=tostring(cfg.Default or "G"); local waiting=false
+        local btn=mk("TextButton", {Parent=parent, Size=UDim2.new(1,0,0,36), BackgroundColor3=theme.Surface2, BorderSizePixel=0, Text="", AutoButtonColor=false})
+        mk("UICorner", {Parent=btn, CornerRadius=UDim.new(0,10)}); mk("UIStroke", {Parent=btn, Color=theme.Border, Thickness=1, Transparency=0.25})
+        local label=mk("TextLabel", {Parent=btn, Name="FxLabel", BackgroundTransparency=1, Position=UDim2.new(0,10,0,0), Size=UDim2.new(1,-20,1,0), TextXAlignment=Enum.TextXAlignment.Left, TextColor3=theme.Text, Font=Enum.Font.GothamBold, TextSize=13})
+        local function syncText() label.Text=string.format("%s: [%s]",cfg.Title or "Keybind",waiting and "..." or key) end; syncText()
+        btn.MouseButton1Click:Connect(function() waiting=true; activeKeybindCapture=true; syncText() end)
+        UIS.InputBegan:Connect(function(input,gp)
+            if gp then return end
+            if waiting and input.UserInputType==Enum.UserInputType.Keyboard then key=input.KeyCode.Name; waiting=false; activeKeybindCapture=nil; syncText(); if cfg.Callback then cfg.Callback(key) end; return end
+            if not waiting and not activeKeybindCapture and input.UserInputType==Enum.UserInputType.Keyboard and input.KeyCode.Name==key then if cfg.Pressed then cfg.Pressed() end end
+        end)
+        return btn
+    end
+    return Elements
+end
+
+-- ===================== NOTIFY METHOD =====================
+function FoxnameUI:Notify(cfg)
+    cfg=cfg or {}; local parent=(gethui and gethui()) or game:GetService("CoreGui")
+    local gui=NotifyHost
+    if not gui or not gui.Parent then
+        gui=mk("ScreenGui", {Name="FoxnameNotify", Parent=parent, ResetOnSpawn=false, IgnoreGuiInset=true}); NotifyHost=gui
+        local stack=mk("Frame", {Parent=gui, Name="Stack", AnchorPoint=Vector2.new(1,1), Position=UDim2.new(1,-16,1,-16), Size=UDim2.new(0,300,1,-32), BackgroundTransparency=1})
+        mk("UIListLayout", {Parent=stack, Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder}).VerticalAlignment=Enum.VerticalAlignment.Bottom
+    end
+    local stack=gui:FindFirstChild("Stack")
+    local wrap=mk("Frame", {Parent=stack, BackgroundTransparency=1, BorderSizePixel=0, Size=UDim2.fromOffset(280,70), LayoutOrder=os.clock()*1000})
+    local card=mk("Frame", {Parent=wrap, AnchorPoint=Vector2.new(1,1), Position=UDim2.new(1,360,1,0), Size=UDim2.fromOffset(280,70), BackgroundColor3=Theme.Surface, BorderSizePixel=0})
+    mk("UICorner", {Parent=card, CornerRadius=UDim.new(0,12)}); mk("UIStroke", {Parent=card, Color=Theme.Border, Thickness=1, Transparency=0.2})
+    mk("TextLabel", {Parent=card, BackgroundTransparency=1, Position=UDim2.new(0,12,0,8), Size=UDim2.new(1,-24,0,20), Text=cfg.Title or "Notification", Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Theme.Text, TextXAlignment=Enum.TextXAlignment.Left})
+    mk("TextLabel", {Parent=card, BackgroundTransparency=1, Position=UDim2.new(0,12,0,30), Size=UDim2.new(1,-24,0,32), Text=cfg.Content or "...", Font=Enum.Font.Gotham, TextSize=12, TextColor3=Theme.MutedText, TextXAlignment=Enum.TextXAlignment.Left, TextWrapped=true})
+    local progressBg=mk("Frame", {Parent=card, Position=UDim2.new(0,10,1,-8), Size=UDim2.new(1,-20,0,3), BackgroundColor3=Theme.Surface3, BorderSizePixel=0})
+    mk("UICorner", {Parent=progressBg, CornerRadius=UDim.new(1,0)})
+    local progress=mk("Frame", {Parent=progressBg, Size=UDim2.new(1,0,1,0), BackgroundColor3=Theme.Accent, BorderSizePixel=0})
+    mk("UICorner", {Parent=progress, CornerRadius=UDim.new(1,0)})
+    tween(card,0.48,{Position=UDim2.new(1,0,1,0)},Enum.EasingStyle.Quart)
+    local duration=cfg.Duration or 3; tween(progress,duration,{Size=UDim2.new(0,0,1,0)},Enum.EasingStyle.Linear)
+    task.delay(duration,function() tween(card,0.48,{Position=UDim2.new(1,360,1,0),BackgroundTransparency=0.2},Enum.EasingStyle.Quart); task.wait(0.5); if wrap and wrap.Parent then wrap:Destroy() end end)
+end
+
+-- ===================== CREATE WINDOW =====================
+function FoxnameUI:CreateWindow(cfg)
+    cfg=cfg or {}; local parent=(gethui and gethui()) or game:GetService("CoreGui")
+    local gui=mk("ScreenGui", {Name="FoxnameUI", Parent=parent, ResetOnSpawn=false, IgnoreGuiInset=true})
+    local defaultSize=cfg.DefaultSize or cfg.Size or UDim2.fromOffset(680,460)
+    local minSize=cfg.MinSize or UDim2.fromOffset(520,340); local maxSize=cfg.MaxSize or UDim2.fromOffset(980,700)
+    local main=mk("Frame", {Parent=gui, Size=defaultSize, Position=UDim2.fromScale(0.5,0.5), AnchorPoint=Vector2.new(0.5,0.5), BackgroundColor3=Theme.Background, BorderSizePixel=0, ClipsDescendants=false})
+    mk("UICorner", {Parent=main, CornerRadius=UDim.new(0,14)}); mk("UIStroke", {Parent=main, Color=Theme.Border, Thickness=2, Transparency=0})
+    
+    -- BACKGROUND IMAGE
+    local bgImage=mk("ImageLabel", {Parent=main, Size=UDim2.new(1,0,1,0), Position=UDim2.new(0,0,0,0), BackgroundTransparency=1, Image="rbxassetid://"..BACKGROUND_IMAGE_ID, ScaleType=Enum.ScaleType.Crop, ImageTransparency=0.65, BorderSizePixel=0, ZIndex=0})
+    mk("UICorner", {Parent=bgImage, CornerRadius=UDim.new(0,14)})
+    
+    local top=mk("Frame", {Parent=main, Size=UDim2.new(1,0,0,58), BackgroundColor3=Theme.Surface, BorderSizePixel=0})
+    mk("UICorner", {Parent=top, CornerRadius=UDim.new(0,14)})
+    mk("TextLabel", {Parent=top, Name="FxLabel", BackgroundTransparency=1, Position=UDim2.new(0,14,0,12), Size=UDim2.new(1,-120,0,24), TextXAlignment=Enum.TextXAlignment.Left, Text="Kittylol preminum", TextColor3=Theme.Text, Font=Enum.Font.GothamBold, TextSize=18})
+    
+    -- GIF ICON for Hide button
+    local hideBtnContainer, hideGifImage, hideGifCon = createGIFIcon(top, GIF_IDS, UDim2.new(0,28,0,24), UDim2.new(1,-66,0.5,-12), UDim.new(0,8))
+    local hideBtn=mk("TextButton", {Parent=hideBtnContainer, Size=UDim2.new(1,0,1,0), Position=UDim2.new(0,0,0,0), BackgroundTransparency=1, Text="", BorderSizePixel=0, AutoButtonColor=false, ZIndex=hideBtnContainer.ZIndex+1})
+    local hideHover=mk("Frame", {Parent=hideBtnContainer, Size=UDim2.fromScale(1,1), BackgroundColor3=Color3.fromRGB(255,255,255), BackgroundTransparency=0.92, BorderSizePixel=0, ZIndex=hideBtnContainer.ZIndex})
+    mk("UICorner", {Parent=hideHover, CornerRadius=UDim.new(0,8)})
+    
+    -- GIF ICON for Close button
+    local closeBtnContainer, closeGifImage, closeGifCon = createGIFIcon(top, GIF_IDS, UDim2.new(0,28,0,24), UDim2.new(1,-34,0.5,-12), UDim.new(0,8))
+    local closeBtn=mk("TextButton", {Parent=closeBtnContainer, Size=UDim2.new(1,0,1,0), Position=UDim2.new(0,0,0,0), BackgroundTransparency=1, Text="", BorderSizePixel=0, AutoButtonColor=false, ZIndex=closeBtnContainer.ZIndex+1})
+    local closeHover=mk("Frame", {Parent=closeBtnContainer, Size=UDim2.fromScale(1,1), BackgroundColor3=Color3.fromRGB(255,255,255), BackgroundTransparency=0.92, BorderSizePixel=0, ZIndex=closeBtnContainer.ZIndex})
+    mk("UICorner", {Parent=closeHover, CornerRadius=UDim.new(0,8)})
+    
+    local function styleHover(btn, hoverLayer)
+        btn.MouseEnter:Connect(function() if hoverLayer then tween(hoverLayer,0.12,{BackgroundTransparency=0.78}) end end)
+        btn.MouseLeave:Connect(function() if hoverLayer then tween(hoverLayer,0.12,{BackgroundTransparency=0.92}) end end)
+    end
+    styleHover(hideBtn, hideHover); styleHover(closeBtn, closeHover)
+    
+    -- DRAG
+    local dragging=false; local dragStart, startPos
+    top.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true; dragStart=input.Position; startPos=main.Position end end)
+    UIS.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+    UIS.InputChanged:Connect(function(input) if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then local delta=input.Position-dragStart; main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+delta.X,startPos.Y.Scale,startPos.Y.Offset+delta.Y) end end)
+    
+    -- HIDE
+    local savedSize=defaultSize; local savedPos=main.Position
+    local openBtn=mk("TextButton", {Parent=gui, Size=UDim2.fromOffset(44,44), Position=UDim2.new(0,20,0.5,-22), BackgroundColor3=Theme.Accent, Text="Kittylol", TextColor3=Color3.fromRGB(255,255,255), Font=Enum.Font.GothamBold, TextSize=12, Visible=false, BorderSizePixel=0, AutoButtonColor=false})
+    mk("UICorner", {Parent=openBtn, CornerRadius=UDim.new(1,0)})
+    
+    hideBtn.MouseButton1Click:Connect(function()
+        savedSize=main.Size; savedPos=main.Position
+        local miniSize=UDim2.fromOffset(math.max(220,savedSize.X.Offset-120), math.max(160,savedSize.Y.Offset-120))
+        tween(main,0.18,{Size=miniSize,BackgroundTransparency=0.1},Enum.EasingStyle.Quad); task.wait(0.18); main.Visible=false; openBtn.Visible=true
+    end)
+    openBtn.MouseButton1Click:Connect(function()
+        local miniSize=UDim2.fromOffset(math.max(220,savedSize.X.Offset-120), math.max(160,savedSize.Y.Offset-120))
+        main.Size=miniSize; main.Position=savedPos; main.BackgroundTransparency=0.15; main.Visible=true; openBtn.Visible=false
+        tween(main,0.22,{Size=savedSize, Position=savedPos, BackgroundTransparency=0},Enum.EasingStyle.Back)
+    end)
+    
+    -- CLOSE
+    closeBtn.MouseButton1Click:Connect(function()
+        local overlay=mk("Frame", {Parent=gui, Size=UDim2.fromScale(1,1), BackgroundColor3=Color3.fromRGB(0,0,0), BackgroundTransparency=1, BorderSizePixel=0, ZIndex=1000})
+        local confirm=mk("Frame", {Parent=overlay, AnchorPoint=Vector2.new(0.5,0.5), Position=UDim2.fromScale(0.5,0.5), Size=UDim2.fromOffset(320,150), BackgroundColor3=Theme.Surface, BorderSizePixel=0, ZIndex=1001})
+        mk("UICorner", {Parent=confirm, CornerRadius=UDim.new(0,12)}); mk("UIStroke", {Parent=confirm, Color=Theme.Border, Thickness=1, Transparency=0.2})
+        local confirmScale=mk("UIScale", {Parent=confirm, Scale=0.85})
+        mk("TextLabel", {Parent=confirm, BackgroundTransparency=1, Position=UDim2.new(0,14,0,12), Size=UDim2.new(1,-28,0,24), Text="Are you sure?", TextColor3=Theme.Text, Font=Enum.Font.GothamBold, TextSize=16, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1002})
+        mk("TextLabel", {Parent=confirm, BackgroundTransparency=1, Position=UDim2.new(0,14,0,42), Size=UDim2.new(1,-28,0,34), Text="This will close the UI.", TextWrapped=true, TextColor3=Theme.MutedText, Font=Enum.Font.Gotham, TextSize=13, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1002})
+        local yes=mk("TextButton", {Parent=confirm, Position=UDim2.new(0,14,1,-44), Size=UDim2.new(0.5,-20,0,30), BackgroundColor3=Theme.Danger, BorderSizePixel=0, Text="Yes", TextColor3=Color3.fromRGB(255,255,255), Font=Enum.Font.GothamBold, TextSize=12, ZIndex=1002})
+        mk("UICorner", {Parent=yes, CornerRadius=UDim.new(0,8)})
+        local no=mk("TextButton", {Parent=confirm, Position=UDim2.new(0.5,6,1,-44), Size=UDim2.new(0.5,-20,0,30), BackgroundColor3=Theme.Surface3, BorderSizePixel=0, Text="Cancel", TextColor3=Theme.Text, Font=Enum.Font.GothamBold, TextSize=12, ZIndex=1002})
+        mk("UICorner", {Parent=no, CornerRadius=UDim.new(0,8)})
+        tween(overlay,0.14,{BackgroundTransparency=0.45},Enum.EasingStyle.Quad); tween(confirmScale,0.18,{Scale=1},Enum.EasingStyle.Back)
+        no.MouseButton1Click:Connect(function() tween(confirmScale,0.12,{Scale=0.9}); tween(overlay,0.12,{BackgroundTransparency=1}); task.wait(0.12); overlay:Destroy() end)
+        yes.MouseButton1Click:Connect(function() tween(confirmScale,0.1,{Scale=0.9}); tween(overlay,0.1,{BackgroundTransparency=1}); tween(main,0.14,{Size=UDim2.fromOffset(0,0),BackgroundTransparency=0.2}); task.wait(0.14); if hideGifCon then hideGifCon:Disconnect() end; if closeGifCon then closeGifCon:Disconnect() end; gui:Destroy() end)
+    end)
+    
+    -- TABS & CONTENT
+    local tabButtons=mk("Frame", {Parent=main, Size=UDim2.new(0,168,1,-58), Position=UDim2.new(0,0,0,58), BackgroundColor3=Theme.Surface, BorderSizePixel=0, ClipsDescendants=true})
+    mk("UICorner", {Parent=tabButtons, CornerRadius=UDim.new(0,14)})
+    local btnList=mk("UIListLayout", {Parent=tabButtons, Padding=UDim.new(0,7), SortOrder=Enum.SortOrder.LayoutOrder})
+    mk("UIPadding", {Parent=tabButtons, PaddingTop=UDim.new(0,10), PaddingLeft=UDim.new(0,10), PaddingRight=UDim.new(0,10)})
+    
+    local contentArea=mk("Frame", {Parent=main, Position=UDim2.new(0,168,0,58), Size=UDim2.new(1,-168,1,-58), BackgroundTransparency=1})
+    
+    local elements=CreateElements(Theme); local tabs={}; local currentTab
+    local function show(tab)
+        if not tab then return end
+        if currentTab then currentTab.Container.Visible=false; tween(currentTab.Button,0.12,{BackgroundColor3=Theme.Surface2}) end
+        currentTab=tab; tab.Container.Visible=true; tab.Container.CanvasPosition=Vector2.new(0,0); tween(tab.Button,0.12,{BackgroundColor3=Theme.Accent})
+    end
+    
+    local windowApi={}
+    function windowApi:Tab(name, icon)
+        local btn=mk("TextButton", {Parent=tabButtons, Size=UDim2.new(1,0,0,32), BackgroundColor3=Theme.Surface2, BorderSizePixel=0, Text="", TextColor3=Theme.Text, Font=Enum.Font.GothamBold, TextSize=13, AutoButtonColor=false})
+        mk("UICorner", {Parent=btn, CornerRadius=UDim.new(0,9)})
+        mk("TextLabel", {Parent=btn, Name="FxLabel", BackgroundTransparency=1, Position=UDim2.new(0,10,0,0), Size=UDim2.new(1,-20,1,0), TextXAlignment=Enum.TextXAlignment.Left, Text=name, TextColor3=Theme.Text, Font=Enum.Font.GothamBold, TextSize=13})
+        local container=mk("ScrollingFrame", {Parent=contentArea, Size=UDim2.new(1,0,1,0), CanvasSize=UDim2.new(0,0,0,0), ScrollBarThickness=4, BackgroundTransparency=1, BorderSizePixel=0, Visible=false})
+        local layout=mk("UIListLayout", {Parent=container, Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder})
+        mk("UIPadding", {Parent=container, PaddingTop=UDim.new(0,10), PaddingLeft=UDim.new(0,10), PaddingRight=UDim.new(0,10), PaddingBottom=UDim.new(0,10)})
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() container.CanvasSize=UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+14) end)
+        local tab={Button=btn, Container=container}
+        function tab:Button(c) return elements:Button(container,c) end
+        function tab:Toggle(c) return elements:Toggle(container,c) end
+        function tab:Slider(c) return elements:Slider(container,c) end
+        function tab:Input(c) return elements:Input(container,c) end
+        function tab:Dropdown(c) return elements:Dropdown(container,c) end
+        function tab:Keybind(c) return elements:Keybind(container,c) end
+        function tab:Section(c) return elements:Section(container,c or {}) end
+        function tab:Divider() return elements:Divider(container) end
+        btn.MouseButton1Click:Connect(function() show(tab) end); table.insert(tabs,tab)
+        if #tabs==1 then show(tab) end
+        return tab
+    end
+    
+    function windowApi:Hide() savedSize=main.Size; savedPos=main.Position; main.Visible=false; openBtn.Visible=true end
+    function windowApi:Show() main.Position=savedPos; main.Size=savedSize; main.Visible=true; openBtn.Visible=false end
+    function windowApi:Destroy() if hideGifCon then hideGifCon:Disconnect() end; if closeGifCon then closeGifCon:Disconnect() end; gui:Destroy() end
+    return windowApi
+end
+
+FoxnameUI.Theme = Theme
+return FoxnameUI
