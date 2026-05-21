@@ -1,0 +1,78 @@
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = game.CoreGui
+
+local Main = Instance.new("Frame")
+Main.Parent = ScreenGui
+Main.Size = UDim2.new(0, 420, 0, 260)
+Main.Position = UDim2.new(0.5, -210, 0.5, -130)
+Main.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+Main.BackgroundTransparency = 0.25
+Main.BorderSizePixel = 0
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 16)
+UICorner.Parent = Main
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Parent = Main
+Stroke.Color = Color3.fromRGB(255, 20, 147)
+Stroke.Thickness = 3
+
+local BG = Instance.new("ImageLabel")
+BG.Parent = Main
+BG.Size = UDim2.new(1,0,1,0)
+BG.BackgroundTransparency = 1
+BG.Image = "rbxassetid://89021079722678"
+BG.ImageTransparency = 0.35
+BG.ScaleType = Enum.ScaleType.Stretch
+BG.ZIndex = 0
+
+local BGCorner = Instance.new("UICorner")
+BGCorner.CornerRadius = UDim.new(0,16)
+BGCorner.Parent = BG
+
+local Title = Instance.new("TextLabel")
+Title.Parent = Main
+Title.BackgroundTransparency = 1
+Title.Size = UDim2.new(1,0,0,40)
+Title.Position = UDim2.new(0,0,0,8)
+Title.Text = "Foxname UI"
+Title.TextColor3 = Color3.fromRGB(255,255,255)
+Title.TextScaled = true
+Title.Font = Enum.Font.GothamBold
+Title.ZIndex = 2
+
+-- GIF cạnh title
+local Gif = Instance.new("ImageLabel")
+Gif.Parent = Main
+Gif.BackgroundTransparency = 1
+Gif.Size = UDim2.new(0, 42, 0, 42)
+Gif.Position = UDim2.new(0, 20, 0, 6)
+Gif.ZIndex = 2
+
+local frames = {
+    "rbxassetid://119074790388219",
+    "rbxassetid://115672794096960",
+    "rbxassetid://71738870122726",
+    "rbxassetid://118412167563569",
+    "rbxassetid://137807993707113",
+    "rbxassetid://88762654041910",
+    "rbxassetid://129594193999212",
+    "rbxassetid://93903492440603",
+    "rbxassetid://137536008841598"
+}
+
+task.spawn(function()
+    local i = 1
+
+    while true do
+        Gif.Image = frames[i]
+
+        i += 1
+        if i > #frames then
+            i = 1
+        end
+
+        task.wait(0.05)
+    end
+end)
