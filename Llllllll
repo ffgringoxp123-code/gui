@@ -347,13 +347,13 @@ local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "KittylolGui"
 ScreenGui.ResetOnSpawn = false
 
--- =============== HÀM TẠO NỀN ẢNH CHO GUI ===============
+-- =============== HÀM TẠO NỀN ẢNH CHO GUI (ẢNH TO CHẠM VIỀN) ===============
 local function addImageBackground(parent, imageId, zIndex)
     parent.BackgroundTransparency = 1
-    parent.ClipsDescendants = true
+    parent.ClipsDescendants = false  -- Cho phép ảnh tràn ra ngoài bo góc
     local bg = Instance.new("ImageLabel", parent)
-    bg.Size = UDim2.new(1, 0, 1, 0)
-    bg.Position = UDim2.new(0, 0, 0, 0)
+    bg.Size = UDim2.new(1.12, 8, 1.12, 8)  -- To hơn 12% + 8px để tràn viền
+    bg.Position = UDim2.new(-0.06, -4, -0.06, -4)  -- Canh giữa âm để tràn đều
     bg.BackgroundTransparency = 1
     bg.BorderSizePixel = 0
     bg.Image = "rbxassetid://" .. imageId
@@ -775,7 +775,6 @@ roundCorners(PFrame, 16)
 local PS = Instance.new("UIStroke", PFrame)
 PS.Color = RedBorder
 PS.Thickness = 2
--- [SỬA] GUI bé → dùng 108045374475160
 addImageBackground(PFrame, "108045374475160")
 
 local PTitle = Instance.new("TextLabel", PFrame)
@@ -823,7 +822,6 @@ roundCorners(SpamPanel, 16)
 local SpamStroke = Instance.new("UIStroke", SpamPanel)
 SpamStroke.Color = RedBorder
 SpamStroke.Thickness = 2
--- [SỬA] GUI bé → dùng 108045374475160
 addImageBackground(SpamPanel, "108045374475160")
 
 local SpamTitle = Instance.new("TextLabel", SpamPanel)
@@ -940,7 +938,6 @@ roundCorners(ImmPanel, 16)
 local ImmStroke = Instance.new("UIStroke", ImmPanel)
 ImmStroke.Color = RedBorder
 ImmStroke.Thickness = 2
--- [SỬA] GUI bé → dùng 108045374475160
 addImageBackground(ImmPanel, "108045374475160")
 
 local ImmTitle = Instance.new("TextLabel", ImmPanel)
@@ -1030,7 +1027,6 @@ roundCorners(TopBar, 10)
 local TopBarStroke = Instance.new("UIStroke", TopBar)
 TopBarStroke.Color = RedBorder
 TopBarStroke.Thickness = 2
--- [SỬA] GUI bé → dùng 108045374475160
 addImageBackground(TopBar, "108045374475160")
 
 local TopBarGif = Instance.new("ImageLabel", TopBar)
@@ -1093,7 +1089,6 @@ roundCorners(Frame, 24)
 local MS = Instance.new("UIStroke", Frame)
 MS.Color = RedBorder
 MS.Thickness = 2.5
--- [SỬA] GUI chính → dùng 127529017624139
 addImageBackground(Frame, "127529017624139")
 
 local TitleBar = Instance.new("Frame", Frame)
@@ -1413,7 +1408,6 @@ makeToggle("Triggerbot", false, function(v)
         uiStroke.Thickness = 2
         uiStroke.Color = RedBorder
         uiStroke.Parent = gui
-        -- [SỬA] GUI bé → dùng 108045374475160
         addImageBackground(gui, "108045374475160")
         local title = Instance.new("TextLabel")
         title.Name = "Title"
@@ -2158,4 +2152,4 @@ RunService.Heartbeat:Connect(function()
     if currentString ~= lastOptionsString then lastOptionsString = currentString end
 end)
 
-print("Kittylol paid loaded - Full transparent + rounded corners + hồng đậm text")
+print("Kittylol paid loaded - Full transparent + rounded corners + hồng đậm text + ảnh to chạm viền")
