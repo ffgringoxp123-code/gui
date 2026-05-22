@@ -280,8 +280,8 @@ local function loadColors()
         Dark = Color3.fromRGB(150, 10, 80),          -- Hồng đậm tối
         Pale = Color3.fromRGB(80, 20, 40),           -- Hồng trong suốt nền
         BgTrans = Color3.fromRGB(40, 10, 20),        -- Nền hồng tối
-        Text = Color3.fromRGB(255, 182, 193),         -- LightPink chữ
-        Sub = Color3.fromRGB(200, 130, 150),          -- Hồng nhạt phụ
+        Text = Color3.fromRGB(200, 30, 30),           -- Đỏ đậm chữ chức năng
+        Sub = Color3.fromRGB(160, 50, 50),            -- Đỏ đậm chữ phụ
         WhiteBg = Color3.fromRGB(255, 200, 210),      -- Hồng trắng
     }
 end
@@ -299,7 +299,7 @@ local gifIds = {
     "137536008841598"
 }
 
-local gifSpeed = 0.10
+local gifSpeed = 0.15
 local gifIndex = 1
 
 local function getNextGifId()
