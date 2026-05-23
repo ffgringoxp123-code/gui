@@ -1,0 +1,578 @@
+-- Load Ui
+local Library = loadstring(game:HttpGet("https://pastefy.app/tAT2U6nA/raw"))()
+
+-- Create Window
+local Window = Library:CreateWindow({
+    Title = "Kittylol hub",
+    Icon = 131223200633025
+})
+
+-- ===== DEFINE PINK THEME COLORS =====
+local PinkTheme = {
+    TabBg = Color3.fromRGB(255, 105, 180),      -- Màu hồng cho nền tab
+    TabText = Color3.fromRGB(255, 255, 255),     -- Chữ trắng
+    TabActive = Color3.fromRGB(255, 20, 147),    -- Hồng đậm khi active
+    SectionBg = Color3.fromRGB(255, 182, 193),   -- Nền section màu hồng nhạt
+    SectionBorder = Color3.fromRGB(255, 105, 180), -- Viền section
+    BtnBg = Color3.fromRGB(255, 105, 180),
+    BtnText = Color3.fromRGB(255, 255, 255),
+    ToggleOn = Color3.fromRGB(255, 20, 147),
+    SliderBg = Color3.fromRGB(255, 182, 193),
+    SliderFill = Color3.fromRGB(255, 20, 147),
+    DropdownBg = Color3.fromRGB(255, 182, 193),
+    DropdownText = Color3.fromRGB(139, 0, 75),
+}
+
+-- Helper function để đổi màu các phần tử UI
+local function ApplyPinkThemeToTab(tab)
+    -- Đổi màu tab header
+    if tab.TabButton then
+        tab.TabButton.BackgroundColor3 = PinkTheme.TabBg
+        tab.TabButton.TextColor3 = PinkTheme.TabText
+        tab.TabButton.BorderSizePixel = 0
+        -- Khi active
+        tab.TabButton:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
+            -- Giữ màu hồng
+        end)
+    end
+    
+    -- Đổi màu sections trong tab
+    for _, section in pairs(tab.Sections or {}) do
+        if section.Container then
+            section.Container.BackgroundColor3 = PinkTheme.SectionBg
+            section.Container.BorderColor3 = PinkTheme.SectionBorder
+            section.Container.BorderSizePixel = 2
+            -- Title của section
+            if section.Title then
+                section.Title.TextColor3 = PinkTheme.DropdownText
+            end
+        end
+    end
+    
+    -- Đổi màu các phần tử trong tab
+    for _, element in pairs(tab.Elements or {}) do
+        if element:IsA("Frame") then
+            element.BackgroundColor3 = PinkTheme.SectionBg
+        end
+    end
+end
+
+-- Tạo các tab với màu hồng
+local function CreatePinkTab(title, icon)
+    local tab = Window:CreateTab({
+        Title = title,
+        Icon = icon
+    })
+    
+    -- Custom styling cho tab button
+    task.wait(0.1)
+    if tab.TabButton then
+        tab.TabButton.BackgroundColor3 = PinkTheme.TabBg
+        tab.TabButton.BackgroundColor3 = Color3.fromRGB(255, 105, 180) -- Pink background for tab
+    end
+    
+    return tab
+end
+
+-- ===== CREATE TABS =====
+-- Main Tab
+local MainTab = Window:CreateTab({
+    Title = "Main",
+    Icon = "rbxassetid://131223200633025"
+})
+
+-- Combat Tab
+local CombatTab = Window:CreateTab({
+    Title = "Combat",
+    Icon = "rbxassetid://131223200633025"
+})
+
+-- Visuals Tab  
+local VisualsTab = Window:CreateTab({
+    Title = "Visuals",
+    Icon = "rbxassetid://131223200633025"
+})
+
+-- Misc Tab
+local MiscTab = Window:CreateTab({
+    Title = "Misc",
+    Icon = "rbxassetid://131223200633025"
+})
+
+-- Settings Tab
+local SettingsTab = Window:CreateTab({
+    Title = "Settings",
+    Icon = "rbxassetid://131223200633025"
+})
+
+-- ===== APPLY PINK THEME TO ALL TABS =====
+local function StyleTabButton(tab)
+    task.wait(0.2)
+    if tab.TabButton then
+        tab.TabButton.BackgroundColor3 = PinkTheme.TabBg
+        tab.TabButton.TextColor3 = PinkTheme.TabText
+        tab.TabButton.BorderSizePixel = 0
+    end
+end
+
+StyleTabButton(MainTab)
+StyleTabButton(CombatTab)
+StyleTabButton(VisualsTab)
+StyleTabButton(MiscTab)
+StyleTabButton(SettingsTab)
+
+-- Override style for active tab
+local originalCreateTab = Window.CreateTab
+Window.CreateTab = function(self, args)
+    local tab = originalCreateTab(self, args)
+    task.wait(0.1)
+    if tab and tab.TabButton then
+        tab.TabButton.BackgroundColor3 = PinkTheme.TabBg
+        tab.TabButton.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    end
+    return tab
+end
+
+-- ===== MAIN TAB =====
+local MainLeft = MainTab:CreateSection({
+    Title = "Main",
+    Side = "Left"
+})
+
+local MainRight = MainTab:CreateSection({
+    Title = "Info",
+    Side = "Right"
+})
+
+-- Left side: Main
+MainLeft:CreateToggle({
+    Title = "Auto Farm",
+    Value = false,
+    Callback = function(v)
+        print("Auto Farm:", v)
+    end
+})
+
+MainLeft:CreateToggle({
+    Title = "Auto Chest",
+    Value = true,
+    Callback = function(v)
+        print("Auto Chest:", v)
+    end
+})
+
+MainLeft:CreateSlider({
+    Title = "Speed",
+    TextEnding = "%",
+    Min = 1,
+    Max = 100,
+    Value = 50,
+    Callback = function(v)
+        print("Speed:", v)
+    end
+})
+
+MainLeft:CreateDropdown({
+    Title = "Select Weapon",
+    List = {"Sword", "Gun", "Fruit"},
+    Multi = false,
+    Value = "Sword",
+    Callback = function(v)
+        print("Selected:", v)
+    end
+})
+
+MainLeft:CreateButton({
+    Title = "Execute",
+    Callback = function()
+        print("Executed")
+    end
+})
+
+-- Right side: Info
+MainRight:CreateLabel({
+    Title = "Kittylol hub v1.0"
+})
+
+MainRight:CreateLabel({
+    Title = "Kittylol"
+})
+
+MainRight:CreateTextBox({
+    Title = "Input",
+    Placeholder = "Type here...",
+    Value = "",
+    Callback = function(v)
+        print("Text:", v)
+    end
+})
+
+-- ===== COMBAT TAB =====
+local CombatSection = CombatTab:CreateSection({
+    Title = "Combat Features",
+    Side = "Left"
+})
+
+local SpamSection = CombatTab:CreateSection({
+    Title = "Spam Settings",
+    Side = "Right"
+})
+
+-- Combat Left
+CombatSection:CreateToggle({
+    Title = "Auto Parry",
+    Value = false,
+    Callback = function(v)
+        ToggleAutoParry(v)
+    end
+})
+
+CombatSection:CreateToggle({
+    Title = "Auto Spam",
+    Value = false,
+    Callback = function(v)
+        autoSpamEnabled = v
+        if not v then StopAutoSpam(); aggressiveMode = false; SetAutoParryConnection() end
+    end
+})
+
+CombatSection:CreateButton({
+    Title = "Manual Spam (setfpscap 9999)",
+    Callback = function()
+        setfpscap(9999)
+        StartManualSpam()
+        print("Manual Spam Started - FPS cap 9999")
+    end
+})
+
+CombatSection:CreateButton({
+    Title = "Stop Manual Spam",
+    Callback = function()
+        StopManualSpam()
+        print("Manual Spam Stopped")
+    end
+})
+
+CombatSection:CreateDropdown({
+    Title = "Curve Method",
+    List = {"camera", "upwards", "backwards", "random"},
+    Multi = false,
+    Value = "camera",
+    Callback = function(v)
+        curveMethod = v
+    end
+})
+
+-- Spam Settings Right
+SpamSection:CreateToggle({
+    Title = "Semi-Immortal",
+    Value = false,
+    Callback = function(v)
+        Immortality.Enabled = v
+    end
+})
+
+SpamSection:CreateSlider({
+    Title = "Desync Radius",
+    TextEnding = "",
+    Min = 0,
+    Max = 100,
+    Value = Immortality.DesyncRadius,
+    Callback = function(v)
+        Immortality.DesyncRadius = v
+    end
+})
+
+SpamSection:CreateSlider({
+    Title = "Desync Height",
+    TextEnding = "",
+    Min = 0,
+    Max = 100,
+    Value = Immortality.DesyncHeight,
+    Callback = function(v)
+        Immortality.DesyncHeight = v
+    end
+})
+
+SpamSection:CreateToggle({
+    Title = "Triggerbot",
+    Value = false,
+    Callback = function(v)
+        TriggerbotEnabled = v
+        if v then
+            TriggerbotActive = true
+            TriggerbotOn()
+        else
+            TriggerbotActive = false
+            TriggerbotOff()
+        end
+    end
+})
+
+-- ===== VISUALS TAB =====
+local VisualSection = VisualsTab:CreateSection({
+    Title = "Visuals",
+    Side = "Left"
+})
+
+local StatsSection = VisualsTab:CreateSection({
+    Title = "Stats",
+    Side = "Right"
+})
+
+-- Visuals Left
+VisualSection:CreateToggle({
+    Title = "Ball Visualizer",
+    Value = false,
+    Callback = function(v)
+        Visuals.Enabled = v
+    end
+})
+
+VisualSection:CreateToggle({
+    Title = "Hit Effects",
+    Value = false,
+    Callback = function(v)
+        Visuals.HitEffects = v
+    end
+})
+
+VisualSection:CreateToggle({
+    Title = "Ball Tracers",
+    Value = false,
+    Callback = function(v)
+        Visuals.Tracers = v
+    end
+})
+
+VisualSection:CreateToggle({
+    Title = "Outline",
+    Value = false,
+    Callback = function(v)
+        Visuals.Outline = v
+    end
+})
+
+VisualSection:CreateDropdown({
+    Title = "Visual Color",
+    List = {"White", "Red", "Green", "Blue", "Yellow", "Pink", "Cyan"},
+    Multi = false,
+    Value = "White",
+    Callback = function(v)
+        local colors = {
+            White = Color3.new(1,1,1),
+            Red = Color3.new(1,0,0),
+            Green = Color3.new(0,1,0),
+            Blue = Color3.new(0,0,1),
+            Yellow = Color3.new(1,1,0),
+            Pink = Color3.new(1,0.4,0.7),
+            Cyan = Color3.new(0,1,1)
+        }
+        Visuals.Color = colors[v]
+    end
+})
+
+-- Stats Right
+StatsSection:CreateToggle({
+    Title = "Ability ESP",
+    Value = false,
+    Callback = function(v)
+        abilityEspEnabled = v
+    end
+})
+
+StatsSection:CreateToggle({
+    Title = "Ball Stats",
+    Value = false,
+    Callback = function(v)
+        ToggleBallStats(v)
+    end
+})
+
+-- ===== MISC TAB =====
+local MiscLeft = MiscTab:CreateSection({
+    Title = "Character",
+    Side = "Left"
+})
+
+local MiscRight = MiscTab:CreateSection({
+    Title = "Extras",
+    Side = "Right"
+})
+
+-- Character Left
+MiscLeft:CreateToggle({
+    Title = "Walk Speed",
+    Value = false,
+    Callback = function(v)
+        ToggleWS(v, wsValue)
+    end
+})
+
+MiscLeft:CreateSlider({
+    Title = "Walk Speed Value",
+    TextEnding = "",
+    Min = 36,
+    Max = 500,
+    Value = 36,
+    Callback = function(v)
+        wsValue = v
+        if wsEnabled then ToggleWS(true, v) end
+    end
+})
+
+MiscLeft:CreateToggle({
+    Title = "Jump Power",
+    Value = false,
+    Callback = function(v)
+        jpEnabled = v
+        local char = player.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid.UseJumpPower = true
+            char.Humanoid.JumpPower = v and jpValue or 50
+        end
+    end
+})
+
+MiscLeft:CreateSlider({
+    Title = "Jump Power Value",
+    TextEnding = "",
+    Min = 50,
+    Max = 200,
+    Value = 50,
+    Callback = function(v)
+        jpValue = v
+        if jpEnabled and player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.JumpPower = v
+        end
+    end
+})
+
+MiscLeft:CreateToggle({
+    Title = "Auto Jump",
+    Value = false,
+    Callback = function(v)
+        autoJumpEnabled = v
+        if v then lastJumpTime = 0 end
+    end
+})
+
+MiscLeft:CreateToggle({
+    Title = "Infinite Jump",
+    Value = false,
+    Callback = function(v)
+        ToggleInfiniteJump(v)
+    end
+})
+
+MiscLeft:CreateToggle({
+    Title = "Fly",
+    Value = false,
+    Callback = function(v)
+        ToggleFly(v, flySpeed)
+    end
+})
+
+MiscLeft:CreateSlider({
+    Title = "Fly Speed",
+    TextEnding = "",
+    Min = 10,
+    Max = 100,
+    Value = 50,
+    Callback = function(v)
+        flySpeed = v
+        if flyEnabled then ToggleFly(true, v) end
+    end
+})
+
+-- Extras Right
+MiscRight:CreateToggle({
+    Title = "Hit Sounds",
+    Value = false,
+    Callback = function(v)
+        hitSoundEnabled = v
+    end
+})
+
+MiscRight:CreateSlider({
+    Title = "Hit Sound Volume",
+    TextEnding = "",
+    Min = 1,
+    Max = 10,
+    Value = 5,
+    Callback = function(v)
+        hitSoundVolume = v
+        hitSound.Volume = v
+    end
+})
+
+MiscRight:CreateDropdown({
+    Title = "Hit Sound Type",
+    List = {"Medal","Fatality","Skeet","Switches","Rust Headshot","Neverlose Sound","Bubble","Laser","Steve","Call of Duty","Bat","TF2 Critical","Saber","Bameware"},
+    Multi = false,
+    Value = "Medal",
+    Callback = function(v)
+        selectedHitSound = v
+        if hitSoundIds[v] then hitSound.SoundId = hitSoundIds[v] end
+    end
+})
+
+MiscRight:CreateToggle({
+    Title = "Player Cosmetics",
+    Value = false,
+    Callback = function(v)
+        ToggleCosmetics(v, headlessActive, korbloxActive)
+    end
+})
+
+MiscRight:CreateDropdown({
+    Title = "Headless",
+    List = {"Off", "On"},
+    Multi = false,
+    Value = "Off",
+    Callback = function(v)
+        headlessActive = (v == "On")
+        if cosmeticsEnabled then ApplyCosmetics(player.Character) end
+    end
+})
+
+MiscRight:CreateDropdown({
+    Title = "Korblox",
+    List = {"Off", "On"},
+    Multi = false,
+    Value = "Off",
+    Callback = function(v)
+        korbloxActive = (v == "On")
+        if cosmeticsEnabled then ApplyCosmetics(player.Character) end
+    end
+})
+
+-- ===== SETTINGS TAB =====
+local SettingsLeft = SettingsTab:CreateSection({
+    Title = "UI Settings",
+    Side = "Left"
+})
+
+local SettingsRight = SettingsTab:CreateSection({
+    Title = "Keybinds",
+    Side = "Right"
+})
+
+SettingsLeft:CreateColorPicker({
+    Title = "UI Color",
+    Color = Color3.fromRGB(255, 105, 180),
+    Callback = function(r,g,b)
+        print("Color:", r,g,b)
+    end
+})
+
+SettingsRight:CreateKeyBind({
+    Title = "Toggle UI",
+    Value = Enum.KeyCode.Q,
+    Callback = function(v)
+        print("Key:", v)
+    end
+})
+
+-- Clear flags
+print("Kittylol hub loaded! ❤️")
