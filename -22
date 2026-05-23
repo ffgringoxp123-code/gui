@@ -1,0 +1,505 @@
+-- ===== LOAD LIBRARY =====
+repeat task.wait() until game:IsLoaded()
+
+local Library = loadstring(game:HttpGet("https://pastefy.app/tAT2U6nA/raw"))()
+if not Library then
+    warn("Failed to load Library")
+    return
+end
+
+-- ===== LOAD PARRY ANIMATION MODULE =====
+local ParryAnim = pcall(function()
+    return loadstring(game:HttpGet('https://raw.githubusercontent.com/Lose1s/Module_Wrapper/refs/heads/main/Parry_Animation.lua'))()
+end) and loadstring(game:HttpGet('https://raw.githubusercontent.com/Lose1s/Module_Wrapper/refs/heads/main/Parry_Animation.lua'))() or nil
+
+-- ===== SERVICES =====
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local VIM = game:GetService("VirtualInputManager")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local BallsFolder = workspace:WaitForChild("Balls", 9e9)
+local statsPingItem = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+
+-- ===== PARRY SYSTEM =====
+local ParryRemotes = {}
+local oldIndex
+
+if typeof(hookmetamethod) == "function" then
+    oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+        if (key == "FireServer" and self:IsA("RemoteEvent")) or (key == "InvokeServer" and self:IsA("RemoteFunction")) then
+            return function(_, ...)
+                local args = {...}
+                if #args == 7 and type(args[2]) == "string" and type(args[3]) == "number" then
+                    ParryRemotes[self] = args
+                end
+                return oldIndex(self, key)(_, unpack(args))
+            end
+        end
+        return oldIndex(self, key)
+    end))
+end
+
+local curveMethod = "camera"
+local ACCURACY_FACTOR = 1.285
+local basePreClick = 1.4
+local maxHorizontalMiss = 5
+
+-- Anti-curve variables
+local ballPrevVelocity = {}
+local antiCurveData = {}
+local CURVE_BOOST_FACTOR = 1.3
+local CURVE_ACCEL_THRESHOLD = 60
+local SMOOTH_ALPHA = 0.3
+local CONSISTENT_FRAMES_NEEDED = 3
+
+-- Parry tracking
+local parryTimes = {}
+local parryCount = 0
+local parryHead = 1
+
+-- Ball states
+local ballStates = {}
+
+function InitBallState(ball)
+    if ball:GetAttribute("realBall") then
+        ballStates[ball] = { parried = false }
+        ball:GetAttributeChangedSignal("target"):Connect(function()
+            if ballStates[ball] then ballStates[ball].parried = false end
+        end)
+    end
+end
+
+BallsFolder.ChildAdded:Connect(InitBallState)
+BallsFolder.ChildRemoved:Connect(function(ball)
+    ballStates[ball] = nil
+    ballPrevVelocity[ball] = nil
+    antiCurveData[ball] = nil
+end)
+for _, ball in ipairs(BallsFolder:GetChildren()) do InitBallState(ball) end
+
+function ExecuteParry()
+    local camCF = camera and camera.CFrame or CFrame.new()
+    
+    if curveMethod == "upwards" then
+        local look = camCF.LookVector
+        local upDir = Vector3.new(look.X, 10, look.Z).Unit
+        camCF = CFrame.new(camCF.Position, camCF.Position + upDir)
+    elseif curveMethod == "backwards" then
+        camCF = CFrame.lookAt(camCF.Position, camCF.Position - camCF.LookVector)
+    elseif curveMethod == "random" then
+        local rd = Vector3.new(math.random(-1000,1000)*0.001, math.random(-350,1000)*0.001, math.random(-1000,1000)*0.001).Unit
+        camCF = CFrame.new(camCF.Position, camCF.Position + rd)
+    end
+    
+    if next(ParryRemotes) then
+        for remote, args in pairs(ParryRemotes) do
+            local modArgs = {args[1], args[2], 0, camCF, args[5], args[6]}
+            if remote:IsA("RemoteEvent") then
+                remote:FireServer(unpack(modArgs))
+            else
+                remote:InvokeServer(unpack(modArgs))
+            end
+        end
+    else
+        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end
+    
+    if ParryAnim then
+        pcall(function()
+            if type(ParryAnim) == "function" then ParryAnim()
+            elseif type(ParryAnim) == "table" and ParryAnim.Play then ParryAnim:Play() end
+        end)
+    end
+    return true
+end
+
+function recordAutoParry()
+    local now = tick()
+    if parryCount < 5 then parryCount = parryCount + 1
+    else parryHead = (parryHead % 5) + 1 end
+    parryTimes[((parryHead + parryCount - 2) % 5) + 1] = now
+end
+
+function countRecent()
+    local now = tick()
+    local count = 0
+    for i = 1, parryCount do
+        if now - parryTimes[((parryHead + i - 2) % 5) + 1] < 0.5 then count = count + 1 end
+    end
+    return count
+end
+
+function getAntiCurveMultiplier(ball, playerPos, currentVelocity)
+    local prev = ballPrevVelocity[ball]
+    if not prev then
+        ballPrevVelocity[ball] = currentVelocity
+        antiCurveData[ball] = { smoothAx = 0, smoothAy = 0, smoothAz = 0, curveFrames = 0 }
+        return 1.0
+    end
+    
+    local ax, ay, az = currentVelocity.X - prev.X, currentVelocity.Y - prev.Y, currentVelocity.Z - prev.Z
+    ballPrevVelocity[ball] = currentVelocity
+    
+    local data = antiCurveData[ball]
+    if not data then
+        data = { smoothAx = 0, smoothAy = 0, smoothAz = 0, curveFrames = 0 }
+        antiCurveData[ball] = data
+    end
+    
+    data.smoothAx = data.smoothAx * (1 - SMOOTH_ALPHA) + ax * SMOOTH_ALPHA
+    data.smoothAy = data.smoothAy * (1 - SMOOTH_ALPHA) + ay * SMOOTH_ALPHA
+    data.smoothAz = data.smoothAz * (1 - SMOOTH_ALPHA) + az * SMOOTH_ALPHA
+    
+    local accelMag = math.sqrt(data.smoothAx^2 + data.smoothAy^2 + data.smoothAz^2)
+    if accelMag < 0.1 then data.curveFrames = 0; return 1.0 end
+    
+    local dx, dy, dz = playerPos.X - ball.Position.X, playerPos.Y - ball.Position.Y, playerPos.Z - ball.Position.Z
+    local dist = math.sqrt(dx^2 + dy^2 + dz^2)
+    if dist < 0.01 then return 1.0 end
+    
+    local ux, uy, uz = dx/dist, dy/dist, dz/dist
+    local radialAccel = data.smoothAx*ux + data.smoothAy*uy + data.smoothAz*uz
+    local lateralAccel = math.sqrt(math.max(accelMag^2 - radialAccel^2, 0))
+    
+    if lateralAccel > CURVE_ACCEL_THRESHOLD and radialAccel > 0 then
+        data.curveFrames = data.curveFrames + 1
+        if data.curveFrames >= CONSISTENT_FRAMES_NEEDED then
+            return 1.0 + (CURVE_BOOST_FACTOR - 1.0) * math.min(lateralAccel / (CURVE_ACCEL_THRESHOLD * 2), 1.0)
+        end
+    else
+        data.curveFrames = 0
+    end
+    return 1.0
+end
+
+-- ===== MANUAL SPAM =====
+local manualSpamRunning = false
+local manualSpamThread = nil
+
+function StartManualSpam()
+    if manualSpamThread then return end
+    manualSpamRunning = true
+    setfpscap(9999)
+    manualSpamThread = task.spawn(function()
+        while manualSpamRunning do
+            ExecuteParry()
+            task.wait(0.001)
+        end
+        manualSpamThread = nil
+    end)
+end
+
+function StopManualSpam()
+    manualSpamRunning = false
+    manualSpamThread = nil
+end
+
+-- ===== AUTO SPAM =====
+local autoSpamRunning = false
+local autoSpamThread = nil
+local aggressiveMode = false
+local autoSpamEnabled = false
+
+function StartAutoSpam()
+    if autoSpamThread then return end
+    autoSpamRunning = true
+    autoSpamThread = task.spawn(function()
+        while autoSpamRunning do
+            ExecuteParry()
+            task.wait(0.001)
+        end
+        autoSpamThread = nil
+    end)
+end
+
+function StopAutoSpam()
+    autoSpamRunning = false
+    autoSpamThread = nil
+end
+
+function checkAutoSpam()
+    if not autoSpamEnabled then
+        if aggressiveMode then aggressiveMode = false; StopAutoSpam() end
+        return
+    end
+    local recent = countRecent()
+    if recent >= 3 and not aggressiveMode then
+        aggressiveMode = true
+        StartAutoSpam()
+    elseif recent < 3 and aggressiveMode then
+        aggressiveMode = false
+        StopAutoSpam()
+    end
+end
+
+-- ===== AUTO PARRY =====
+local autoParryEnabled = false
+local autoParryConnection = nil
+
+function AutoParryLoop()
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    local pos = root.Position
+    local pingMs = statsPingItem:GetValue()
+    local pingFactor = math.clamp(pingMs * 0.01, 1, 20)
+    
+    for _, ball in ipairs(BallsFolder:GetChildren()) do
+        if not ball:GetAttribute("realBall") or ball:GetAttribute("target") ~= player.Name then continue end
+        
+        local state = ballStates[ball]
+        if not state then InitBallState(ball); state = ballStates[ball] end
+        if state.parried then continue end
+        
+        local zoomies = ball:FindFirstChild("zoomies")
+        if not zoomies then continue end
+        
+        local vel = zoomies.VectorVelocity
+        local vx, vy, vz = vel.X, vel.Y, vel.Z
+        local bx, by, bz = ball.Position.X, ball.Position.Y, ball.Position.Z
+        local dx, dy, dz = pos.X - bx, pos.Y - by, pos.Z - bz
+        local distSq = dx^2 + dy^2 + dz^2
+        if distSq < 1 then continue end
+        
+        local dist = math.sqrt(distSq)
+        local approachSpeed = (dx*vx + dy*vy + dz*vz) / dist
+        if approachSpeed <= 0 then continue end
+        
+        local horizSpeedSq = vx^2 + vz^2
+        if horizSpeedSq > 0.001 then
+            if math.abs(dx*vz - dz*vx) / math.sqrt(horizSpeedSq) > maxHorizontalMiss then continue end
+        end
+        
+        local cappedSpeed = math.min(approachSpeed, 650)
+        local parryRadius = pingFactor + math.max(approachSpeed / ((2.4 + cappedSpeed * 0.002) * ACCURACY_FACTOR), 9.5)
+        parryRadius = parryRadius * basePreClick * getAntiCurveMultiplier(ball, pos, vel)
+        
+        if dist <= parryRadius then
+            state.parried = true
+            ExecuteParry()
+            recordAutoParry()
+        end
+    end
+    checkAutoSpam()
+end
+
+function SetAutoParryConnection()
+    if autoParryConnection then autoParryConnection:Disconnect(); autoParryConnection = nil end
+    if autoParryEnabled then autoParryConnection = RunService.Stepped:Connect(AutoParryLoop) end
+end
+
+function ToggleAutoParry(on)
+    autoParryEnabled = on
+    SetAutoParryConnection()
+    if not on then StopAutoSpam(); aggressiveMode = false end
+end
+
+-- ===== TRIGGERBOT =====
+local TriggerbotEnabled = false
+local TriggerbotActive = false
+local TriggerbotConnection = nil
+
+function TriggerbotOn()
+    if TriggerbotConnection then TriggerbotConnection:Disconnect() end
+    TriggerbotConnection = RunService.Stepped:Connect(function()
+        if not TriggerbotActive then return end
+        for _, ball in ipairs(BallsFolder:GetChildren()) do
+            if ball:GetAttribute("realBall") and ball:GetAttribute("target") == player.Name then ExecuteParry(); break end
+        end
+    end)
+end
+
+function TriggerbotOff()
+    if TriggerbotConnection then TriggerbotConnection:Disconnect(); TriggerbotConnection = nil end
+end
+
+-- ===== IMMORTALITY =====
+local Immortality = { Enabled = false, DesyncRadius = 40, DesyncHeight = 100 }
+local desyncPositions = {}
+local desyncRotation = 0
+
+task.spawn(function()
+    while true do
+        if Immortality.Enabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            pcall(function() player.Character.HumanoidRootPart:SetNetworkOwner(player) end)
+        end
+        task.wait()
+    end
+end)
+
+RunService.Stepped:Connect(function()
+    if Immortality.Enabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        pcall(function() player.Character.HumanoidRootPart:SetNetworkOwner(player) end)
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not (Immortality.Enabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart")) then return end
+    local root = player.Character.HumanoidRootPart
+    desyncRotation = (desyncRotation + 15) % 360
+    desyncPositions[1] = root.CFrame
+    desyncPositions[2] = root.AssemblyLinearVelocity
+    
+    local spoofed = root.CFrame * CFrame.Angles(0, math.rad(desyncRotation), 0) + Vector3.new(0, Immortality.DesyncHeight, 0)
+    spoofed = spoofed * CFrame.new(math.sin(tick()*30)*Immortality.DesyncRadius, math.cos(tick()*60)*Immortality.DesyncHeight, 0)
+    root.CFrame = spoofed
+    root.AssemblyLinearVelocity = desyncPositions[2] + Vector3.new(math.cos(tick()*8)*3000, math.cos(tick()*8)*3000, 0)
+    RunService.RenderStepped:Wait()
+    root.CFrame = desyncPositions[1]
+    root.AssemblyLinearVelocity = desyncPositions[2]
+end)
+
+if typeof(hookmetamethod) == "function" then
+    local originalCFrameIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+        if Immortality.Enabled and not checkcaller() and key == "CFrame" and player.Character then
+            local root = player.Character:FindFirstChild("HumanoidRootPart")
+            if self == root then return desyncPositions[1] or CFrame.new()
+            elseif self == player.Character:FindFirstChild("Head") and root then
+                return (desyncPositions[1] or CFrame.new()) + Vector3.new(0, root.Size.Y/2 + 0.5, 0)
+            end
+        end
+        return originalCFrameIndex(self, key)
+    end))
+end
+
+-- ===== VISUALS =====
+local Visuals = { Enabled = false, HitEffects = false, Tracers = false, Outline = false, VisualParts = {}, TracerLines = {}, OutlineHandles = {}, Color = Color3.new(1,1,1) }
+local abilityEspEnabled = false
+local ballStatsEnabled = false
+
+function FetchBalls()
+    local balls = {}
+    for _, b in ipairs(BallsFolder:GetChildren()) do if b:GetAttribute("realBall") then table.insert(balls, b) end end
+    return balls
+end
+
+-- Visualizer updates
+task.spawn(function()
+    while true do
+        if Visuals.Enabled then
+            for _, ball in ipairs(FetchBalls()) do
+                if ball and ball.Parent then
+                    local speed = ball.AssemblyLinearVelocity.Magnitude
+                    local size = math.clamp(speed/5, 3.5, 500)
+                    if not Visuals.VisualParts[ball] then
+                        local sphere = Instance.new("Part")
+                        sphere.Name = "VisualPart"; sphere.Anchored = true; sphere.CanCollide = false; sphere.CastShadow = false
+                        sphere.Shape = Enum.PartType.Ball;
+local function CreateWindowUI()
+    local Window = Library:CreateWindow({ Title = "Kittylol hub", Icon = 104263200374555 })
+    
+    -- TABS WITH ICONS
+    local MainTab = Window:CreateTab({ Title = "Main", Icon = "rbxassetid://104263200374555" })
+    local CombatTab = Window:CreateTab({ Title = "Combat", Icon = "rbxassetid://104263200374555" })
+    local VisualsTab = Window:CreateTab({ Title = "Visuals", Icon = "rbxassetid://104263200374555" })
+    local CharTab = Window:CreateTab({ Title = "Character", Icon = "rbxassetid://104263200374555" })
+    local MiscTab = Window:CreateTab({ Title = "Misc", Icon = "rbxassetid://104263200374555" })
+    
+    -- PINK THEME
+    task.wait(0.3)
+    for _, tab in pairs({MainTab, CombatTab, VisualsTab, CharTab, MiscTab}) do
+        if tab and tab.TabButton then
+            tab.TabButton.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+            tab.TabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            tab.TabButton.BorderSizePixel = 0
+        end
+    end
+    
+    -- ===== MAIN TAB =====
+    local MainS = MainTab:CreateSection({ Title = "Discord", Side = "Left" })
+    MainS:CreateLabel({ Title = "Welcome to Kittylol hub!" })
+    MainS:CreateLabel({ Title = "🐱 Cat Hub for Anime Ball" })
+    MainS:CreateButton({ Title = "📋 Copy Discord Link", Callback = function() setclipboard("https://discord.gg/YzfvJuRpu") end })
+    MainS:CreateLabel({ Title = "discord.gg/YzfvJuRpu" })
+    
+    -- ===== COMBAT TAB =====
+    local CL = CombatTab:CreateSection({ Title = "Auto Parry", Side = "Left" })
+    local CR = CombatTab:CreateSection({ Title = "Spam & Extra", Side = "Right" })
+    
+    CL:CreateToggle({ Title = "Auto Parry", Value = false, Callback = function(v) ToggleAutoParry(v) end })
+    CL:CreateToggle({ Title = "Auto Spam", Value = false, Callback = function(v) autoSpamEnabled = v; if not v then StopAutoSpam(); aggressiveMode = false end end })
+    CL:CreateDropdown({ Title = "Curve Method", List = {"camera","upwards","backwards","random"}, Multi = false, Value = "camera", Callback = function(v) curveMethod = v end })
+    CL:CreateToggle({ Title = "Triggerbot", Value = false, Callback = function(v) TriggerbotEnabled = v; if v then TriggerbotActive = true; TriggerbotOn() else TriggerbotActive = false; TriggerbotOff() end end })
+    
+    CR:CreateButton({ Title = "▶ Manual Spam", Callback = function() StartManualSpam() end })
+    CR:CreateButton({ Title = "■ Stop Manual Spam", Callback = function() StopManualSpam() end })
+    CR:CreateToggle({ Title = "Semi-Immortal", Value = false, Callback = function(v) Immortality.Enabled = v end })
+    CR:CreateSlider({ Title = "Desync Radius", TextEnding = "", Min = 0, Max = 200, Value = 40, Callback = function(v) Immortality.DesyncRadius = v end })
+    CR:CreateSlider({ Title = "Desync Height", TextEnding = "", Min = 0, Max = 200, Value = 100, Callback = function(v) Immortality.DesyncHeight = v end })
+    
+    -- ===== VISUALS TAB =====
+    local VL = VisualsTab:CreateSection({ Title = "Ball Visuals", Side = "Left" })
+    local VR = VisualsTab:CreateSection({ Title = "ESP & Stats", Side = "Right" })
+    
+    VL:CreateToggle({ Title = "Ball Visualizer", Value = false, Callback = function(v) Visuals.Enabled = v end })
+    VL:CreateToggle({ Title = "Ball Tracers", Value = false, Callback = function(v) Visuals.Tracers = v end })
+    VL:CreateToggle({ Title = "Outline", Value = false, Callback = function(v) Visuals.Outline = v end })
+    VL:CreateToggle({ Title = "Hit Effects", Value = false, Callback = function(v) Visuals.HitEffects = v end })
+    VL:CreateDropdown({ Title = "Visual Color", List = {"White","Red","Green","Blue","Yellow","Pink","Cyan"}, Multi = false, Value = "White", Callback = function(v) 
+        local colors = {White=Color3.new(1,1,1),Red=Color3.new(1,0,0),Green=Color3.new(0,1,0),Blue=Color3.new(0,0,1),Yellow=Color3.new(1,1,0),Pink=Color3.new(1,0.4,0.7),Cyan=Color3.new(0,1,1)}
+        Visuals.Color = colors[v] end })
+    
+    VR:CreateToggle({ Title = "Ability ESP", Value = false, Callback = function(v) abilityEspEnabled = v end })
+    VR:CreateToggle({ Title = "Ball Stats", Value = false, Callback = function(v) ToggleBallStats(v) end })
+    
+    -- ===== CHARACTER TAB =====
+    local CharL = CharTab:CreateSection({ Title = "Movement", Side = "Left" })
+    local CharR = CharTab:CreateSection({ Title = "Cosmetics & Extras", Side = "Right" })
+    
+    CharL:CreateToggle({ Title = "Walk Speed", Value = false, Callback = function(v) ToggleWS(v, wsValue) end })
+    CharL:CreateSlider({ Title = "Walk Speed Value", TextEnding = "", Min = 16, Max = 500, Value = 36, Callback = function(v) wsValue = v; if wsEnabled then ToggleWS(true, v) end end })
+    CharL:CreateToggle({ Title = "Jump Power", Value = false, Callback = function(v) jpEnabled = v; if player.Character and player.Character:FindFirstChild("Humanoid") then player.Character.Humanoid.UseJumpPower = true; player.Character.Humanoid.JumpPower = v and jpValue or 50 end end })
+    CharL:CreateSlider({ Title = "Jump Power Value", TextEnding = "", Min = 50, Max = 200, Value = 50, Callback = function(v) jpValue = v; if jpEnabled and player.Character and player.Character:FindFirstChild("Humanoid") then player.Character.Humanoid.JumpPower = v end end })
+    CharL:CreateToggle({ Title = "Gravity", Value = false, Callback = function(v) gravEnabled = v; workspace.Gravity = v and gravValue or 196.2 end })
+    CharL:CreateSlider({ Title = "Gravity Value", TextEnding = "", Min = 0, Max = 400, Value = 196, Callback = function(v) gravValue = v; if gravEnabled then workspace.Gravity = v end end })
+    CharL:CreateToggle({ Title = "Auto Jump", Value = false, Callback = function(v) autoJumpEnabled = v; if v then lastJumpTime = 0 end end })
+    CharL:CreateToggle({ Title = "Infinite Jump", Value = false, Callback = function(v) ToggleInfiniteJump(v) end })
+    CharL:CreateToggle({ Title = "Fly", Value = false, Callback = function(v) ToggleFly(v, flySpeed) end })
+    CharL:CreateSlider({ Title = "Fly Speed", TextEnding = "", Min = 10, Max = 100, Value = 50, Callback = function(v) flySpeed = v; if flyEnabled then ToggleFly(true, v) end end })
+    
+    CharR:CreateToggle({ Title = "Player Cosmetics", Value = false, Callback = function(v) ToggleCosmetics(v, headlessActive, korbloxActive) end })
+    CharR:CreateDropdown({ Title = "Headless", List = {"Off","On"}, Multi = false, Value = "Off", Callback = function(v) headlessActive = (v == "On"); if cosmeticsEnabled then ApplyCosmetics(player.Character) end end })
+    CharR:CreateDropdown({ Title = "Korblox", List = {"Off","On"}, Multi = false, Value = "Off", Callback = function(v) korbloxActive = (v == "On"); if cosmeticsEnabled then ApplyCosmetics(player.Character) end end })
+    CharR:CreateToggle({ Title = "Hit Sounds", Value = false, Callback = function(v) hitSoundEnabled = v end })
+    CharR:CreateSlider({ Title = "Hit Sound Volume", TextEnding = "", Min = 1, Max = 10, Value = 5, Callback = function(v) hitSound.Volume = v end })
+    CharR:CreateDropdown({ Title = "Hit Sound Type", List = {"Medal","Fatality","Skeet","Switches","Rust Headshot","Neverlose Sound","Bubble","Laser","Steve","Call of Duty","Bat","TF2 Critical","Saber","Bameware"}, Multi = false, Value = "Medal", Callback = function(v) if hitSoundIds[v] then hitSound.SoundId = hitSoundIds[v] end end })
+    
+    -- ===== MISC TAB =====
+    local MiscL = MiscTab:CreateSection({ Title = "Player Follow & Avatar", Side = "Left" })
+    local MiscR = MiscTab:CreateSection({ Title = "Music & Misc", Side = "Right" })
+    
+    MiscL:CreateToggle({ Title = "Player Follow", Value = false, Callback = function(v) ToggleFollow(v, followTarget) end })
+    MiscL:CreateDropdown({ Title = "Follow Target", List = GetPlayerNames(), Multi = false, Value = GetPlayerNames()[1] or "", Callback = function(v) followTarget = v; if followEnabled then ToggleFollow(true, v) end end })
+    
+    MiscR:CreateToggle({ Title = "Music", Value = false, Callback = function(v) Music.Active = v; PlayMusic() end })
+    MiscR:CreateSlider({ Title = "Volume", TextEnding = "", Min = 0, Max = 1, Value = 0.5, Callback = function(v) Music.Volume = v; if Music.Sound then Music.Sound.Volume = v end end })
+    MiscR:CreateTextBox({ Title = "Song ID", Text = "9126639173", Placeholder = "Enter song ID...", Callback = function(v) Music.CurrentId = v:match("%d+") or "9126639173"; if Music.Active then PlayMusic() end end })
+    MiscR:CreateSlider({ Title = "FOV", TextEnding = "", Min = 60, Max = 120, Value = workspace.CurrentCamera.FieldOfView, Callback = function(v) workspace.CurrentCamera.FieldOfView = v end })
+    MiscR:CreateButton({ Title = "Set FPS Cap 9999", Callback = function() setfpscap(9999) end })
+    MiscR:CreateButton({ Title = "Reset FPS Cap", Callback = function() setfpscap(60) end })
+    
+    print("✅ Kittylol hub loaded!")
+end
+
+-- ===== VISUAL UPDATES =====
+task.spawn(function()
+    while true do task.wait(0.03)
+        UpdateVisualizer(); UpdateTracers(); UpdateOutline()
+    end
+end)
+
+-- ===== PARRY SUCCESS REMOTE =====
+local ParrySuccess = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes") and game:GetService("ReplicatedStorage").Remotes:FindFirstChild("ParrySuccess")
+if ParrySuccess then
+    ParrySuccess.OnClientEvent:Connect(function()
+        if Visuals.HitEffects then for _, ball in ipairs(FetchBalls()) do SpawnHitEffect(ball) end end
+        if hitSoundEnabled then hitSound:Play() end
+    end)
+end
+
+-- ===== INIT WINDOW =====
+CreateWindowUI()
