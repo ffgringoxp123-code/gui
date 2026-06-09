@@ -739,7 +739,7 @@ end)
 -- =====================================================
 -- TURTLE UI - WINDOW CHÍNH (PINK THEME)
 -- =====================================================
-local window = library:Window("Kittylol Hub")
+local window = library:Window("Kittylol PC")
 
 -- Anti Lag
 window:Toggle("Anti Lag", false, function(state)
