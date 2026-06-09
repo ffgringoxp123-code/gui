@@ -1,0 +1,420 @@
+   ██╗  ██╗██╗████████╗████████╗██╗   ██╗██╗      ██████╗ ██╗     
+   ██║ ██╔╝██║╚══██╔══╝╚══██╔══╝╚██╗ ██╔╝██║     ██╔═══██╗██║     
+   █████╔╝ ██║   ██║      ██║    ╚████╔╝ ██║     ██║   ██║██║     
+   ██╔═██╗ ██║   ██║      ██║     ╚██╔╝  ██║     ██║   ██║██║     
+   ██║  ██╗██║   ██║      ██║      ██║   ███████╗╚██████╔╝███████╗
+   ╚═╝  ╚═╝╚═╝   ╚═╝      ╚═╝      ╚═╝   ╚══════╝ ╚═════╝ ╚══════
+K I T T Y L O L    [ autoparyy ]
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local Stats = game:GetService("Stats")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local ParryRemote, FireServerFunc = nil, nil
+local RemoteArgs = {nil, nil, nil, nil, nil, nil, nil}
+local RemoteHooked = false
+
+local Config = {
+	AutoParry = false,
+	AnimationFix = false,
+	BallStats = false,
+	CooldownProtect = false,
+	Headless = false,
+	LowRender = false,
+}
+
+local CurveMethod = "camera"
+local IgnoreParryList = {}
+
+local Detections = {
+	infinity = false,
+	deathslash = false,
+	timehole = false,
+}
+
+local AbilityActive = {
+	Infinity = false,
+	DeathSlash = false,
+	TimeHole = false,
+}
+
+local Alive = workspace:FindFirstChild("Alive")
+
+local function IsAlive()
+	return workspace:FindFirstChild("Alive") ~= nil 
+end
+
+RunService.Heartbeat:Connect(function()
+	if not Alive or not Alive.Parent then
+		Alive = workspace:FindFirstChild("Alive")
+	end
+end)
+
+local function GetCurveCFrame()
+	local currentCamera = workspace.CurrentCamera
+	local character = LocalPlayer.Character
+	local HumanoidRootPart = character and character:FindFirstChild("HumanoidRootPart") 
+	
+	if not HumanoidRootPart then
+		return currentCamera.CFrame
+	end
+	
+	local highestDot = -math.huge
+	local targetPos = nil
+	
+	if Alive then
+		for _, playerChar in pairs(Alive:GetChildren()) do
+			if (playerChar ~= character) and playerChar:FindFirstChild("HumanoidRootPart") then
+				local dir = (playerChar.HumanoidRootPart.Position - currentCamera.CFrame.Position).Unit
+				local dot = currentCamera.CFrame.LookVector:Dot(dir)
+				if dot > highestDot then
+					highestDot = dot
+					targetPos = playerChar.HumanoidRootPart.Position
+				end
+			end
+		end
+	end
+	
+	targetPos = targetPos or (HumanoidRootPart.Position + (currentCamera.CFrame.LookVector * 1000)) 
+	local dirToTarget = (targetPos - HumanoidRootPart.Position).Unit
+	
+	if CurveMethod == "dot" then
+		return CFrame.lookAt(HumanoidRootPart.Position, dirToTarget + Vector3.new(0, 1.75, 0))
+	elseif CurveMethod == "backwards" then
+		return CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + (-dirToTarget * 1000))
+	elseif CurveMethod == "slow" then
+		return CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + Vector3.new(0, -350, 0))
+	else
+		return currentCamera.CFrame
+	end
+end
+
+local Shared = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SwordAPI")
+local LastAnimTick = 0 
+local AnimFlag = false
+local AnimCache = {}
+local CurrentParryAnim = nil
+
+local function GetCharacter()
+	return LocalPlayer.Character
+end
+
+local function GetHumanoid()
+	local char = GetCharacter()
+	return char and char:FindFirstChildOfClass("Humanoid") 
+end
+
+local function StopAnim(animTrack)
+	animTrack:Stop(animTrack:GetAttribute("StopFadeTime") or 0.1)
+end
+
+local function PlayAnim(animTrack)
+	animTrack:Play(animTrack:GetAttribute("PlayFadeTime") or 0, animTrack:GetAttribute("PlayWeight") or 1, animTrack:GetAttribute("PlaySpeed") or 1)
+end
+
+local function GetSwordAnimation()
+	local char = GetCharacter()
+	if not char then return nil end
+	
+	local equippedSword = char:GetAttribute("CurrentlyEquippedSword")
+	if not equippedSword then return Shared.Collection.Default:FindFirstChild("GrabParry") end
+	
+	if AnimCache[equippedSword] then return AnimCache[equippedSword] end
+	
+	local success, result = pcall(function()
+		return ReplicatedStorage.Shared.ReplicatedInstances.Swords.GetSword:Invoke(equippedSword)
+	end)
+	
+	if not success or type(result) ~= "table" then
+		AnimCache[equippedSword] = Shared.Collection.Default:FindFirstChild("GrabParry")
+		return AnimCache[equippedSword]
+	end
+	
+	for _, anim in pairs(Shared.Collection:GetChildren()) do
+		if anim.Name == result.AnimationType then
+			local GrabParry = anim:FindFirstChild("GrabParry") or anim:FindFirstChild("Grab") 
+			if GrabParry then
+				AnimCache[equippedSword] = GrabParry
+				return GrabParry
+			end
+		end
+	end
+	
+	AnimCache[equippedSword] = Shared.Collection.Default:FindFirstChild("GrabParry")
+	return AnimCache[equippedSword]
+end
+
+local function HandleParryAnimation()
+	local hum = GetHumanoid()
+	if not hum then return end
+	
+	local swordAnim = GetSwordAnimation()
+	if not swordAnim then return end
+	
+	for _, track in pairs(hum.Animator:GetPlayingAnimationTracks()) do
+		if track.Name == "GrabParry" or track.Name == "Grab" then
+			track.TimePosition = 0 
+			StopAnim(track)
+		elseif track.Name == "SuccessParry" or track.Name == "Success" then
+			StopAnim(track)
+		end
+	end
+	
+	CurrentParryAnim = hum.Animator:LoadAnimation(swordAnim)
+	PlayAnim(CurrentParryAnim)
+end
+
+local function ExecuteAnimFix()
+	if (os.clock() - LastAnimTick) >= 0.2 or AnimFlag then
+		LastAnimTick = os.clock()
+		AnimFlag = false
+		HandleParryAnimation()
+	end
+end
+
+pcall(function()
+	ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
+		AnimFlag = true
+		local hum = GetHumanoid()
+		if hum then
+			for _, track in pairs(hum.Animator:GetPlayingAnimationTracks()) do
+				if track.Name == "GrabParry" or track.Name == "Grab" then
+					StopAnim(track)
+				end
+			end
+		end
+	end)
+end)
+
+local function ToggleHeadless(char, state)
+	if not char then return end
+	local head = char:FindFirstChild("Head")
+	
+	if head then
+		head.Transparency = state and 1 or 0 
+		for _, obj in pairs(head:GetChildren()) do
+			if obj:IsA("Decal") or obj:IsA("SpecialMesh") then
+				obj.Transparency = state and 1 or 0 
+			end
+		end
+	end
+	
+	for _, obj in pairs(char:GetChildren()) do
+		if obj:IsA("Accessory") then
+			local handle = obj:FindFirstChild("Handle")
+			if handle then
+				local attachment = handle:FindFirstChild("HatAttachment") or handle:FindFirstChild("HairAttachment") or handle:FindFirstChild("FaceFrontAttachment") or handle:FindFirstChild("FaceBackAttachment") or handle:FindFirstChild("NeckAttachment") 
+				if attachment then
+					handle.Transparency = state and 1 or 0 
+				end
+			end
+		end
+	end
+end
+
+local function OnCharacterAdded(char)
+	local hum = char:WaitForChild("Humanoid", 10)
+	if not hum then return end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+	task.wait(0.5)
+	if Config.Headless then ToggleHeadless(char, true) end
+	if Config.LowRender then SetLowRender(true) end
+	task.spawn(function() OnCharacterAdded(char) end)
+end)
+
+if LocalPlayer.Character then
+	task.spawn(function() OnCharacterAdded(LocalPlayer.Character) end)
+end
+
+local function GetBall()
+	local ballsFolder = workspace:FindFirstChild("Balls")
+	if ballsFolder then
+		for _, ball in pairs(ballsFolder:GetChildren()) do
+			if ball:IsA("BasePart") and ball:GetAttribute("realBall") then
+				return ball
+			end
+		end
+		local firstChild = ballsFolder:GetChildren()[1]
+		if firstChild and firstChild:IsA("BasePart") then
+			return firstChild
+		end
+	end
+	
+	for _, obj in ipairs(workspace:GetChildren()) do
+		if obj:IsA("BasePart") and obj.Name:lower():find("ball") then
+			return obj
+		end
+	end
+	
+	for _, folderName in ipairs({"Lobby", "Training", "Practice", "Map", "Game"}) do
+		local f = workspace:FindFirstChild(folderName)
+		if f then
+			for _, obj in ipairs(f:GetDescendants()) do
+				if obj:IsA("BasePart") and obj.Name:lower():find("ball") then
+					return obj
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local PlayerScreenPositions = {}
+local LastScreenPosUpdate = 0 
+
+local function AttemptParry()
+	if not (ParryRemote and FireServerFunc) then return end
+	
+	local currentCamera = workspace.CurrentCamera
+	local char = LocalPlayer.Character
+	if not char then return end
+	
+	local t = tick()
+	if (t - LastScreenPosUpdate) > 0.1 then
+		PlayerScreenPositions = {}
+		if Alive then
+			for _, p in ipairs(Alive:GetChildren()) do
+				if p ~= char and p.PrimaryPart then
+					local pos, onScreen = currentCamera:WorldToScreenPoint(p.PrimaryPart.Position)
+					if onScreen then
+						PlayerScreenPositions[tostring(p)] = pos
+					end
+				end
+			end
+		end
+		LastScreenPosUpdate = t
+	end
+	
+	local vpSize = currentCamera.ViewportSize
+	local curveCFrame = GetCurveCFrame()
+	
+	RemoteArgs[3] = curveCFrame.LookVector
+	RemoteArgs[4] = curveCFrame
+	RemoteArgs[5] = PlayerScreenPositions
+	RemoteArgs[6] = {vpSize.X / 2, vpSize.Y / 2}
+	
+	pcall(function()
+		FireServerFunc(ParryRemote, unpack(RemoteArgs))
+	end)
+	
+	if Config.AnimationFix then
+		task.spawn(ExecuteAnimFix)
+	end
+end
+
+pcall(function()
+	ReplicatedStorage.Remotes.DeathBall.OnClientEvent:Connect(function(_, state)
+		AbilityActive.DeathSlash = state or false 
+	end)
+	ReplicatedStorage.Remotes.InfinityBall.OnClientEvent:Connect(function(_, state)
+		AbilityActive.Infinity = state or false 
+	end)
+	
+	local NetStore = ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net
+	
+	NetStore["RE/TimeHoleActivate"].OnClientEvent:Connect(function(plr)
+		if plr == LocalPlayer or (plr and plr.Name == LocalPlayer.Name) then
+			AbilityActive.TimeHole = true
+		end
+	end)
+	NetStore["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function()
+		AbilityActive.TimeHole = false
+	end)
+end)
+
+local LastBallCheckTick = 0
+local CurrentTargetBall = nil
+
+local SavedQuality = nil
+local function SetLowRender(state)
+	if state then
+		pcall(function()
+			SavedQuality = settings().Rendering.QualityLevel
+			settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+			game:GetService("Lighting").GlobalShadows = false
+			game:GetService("Lighting").FogEnd = 8999999488
+		end)
+	else
+		pcall(function()
+			if SavedQuality then
+				settings().Rendering.QualityLevel = SavedQuality
+			end
+			game:GetService("Lighting").GlobalShadows = true
+		end)
+	end
+end
+
+RunService.Heartbeat:Connect(function()
+	local t = tick()
+	
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart") 
+	if not hrp then return end
+	
+	if (t - LastBallCheckTick) > 1 then
+		CurrentTargetBall = GetBall()
+		LastBallCheckTick = t
+	end
+	
+	local ball = CurrentTargetBall
+	local isAlive = IsAlive()
+	
+	if ball and ball:IsA("BasePart") then
+		local ballSpeed = ball.Velocity.Magnitude
+		
+		local pingSec = 0.08
+		pcall(function() pingSec = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000 end)
+		
+		local dist = (hrp.Position - ball.Position).Magnitude
+		local targetAtt = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("targetPlayer") or ball:GetAttribute("TargetPlayer") 
+		local isTargetingMe = (targetAtt == LocalPlayer.Name) or (targetAtt == LocalPlayer.UserId) or (targetAtt == tostring(LocalPlayer.UserId)) 
+	
+		if Config.AutoParry and ParryRemote and FireServerFunc and isTargetingMe then
+			local ignoreAbility = (Detections.infinity and AbilityActive.Infinity) or (Detections.deathslash and AbilityActive.DeathSlash) or (Detections.timehole and AbilityActive.TimeHole) 
+			
+			if not ignoreAbility then
+				local debugId = ball:GetDebugId()
+				if not IgnoreParryList[debugId] then
+					local shouldParry = false
+					local zoomies = ball:FindFirstChild("zoomies")
+					
+					if zoomies then
+						local dirToMe = (hrp.Position - ball.Position).Unit
+						local dotP = dirToMe:Dot(zoomies.VectorVelocity.Unit)
+						if dotP >= (0.3 - (pingSec * 0.5)) then
+							local dynamicThreshold = ballSpeed * (pingSec + 0.016) * 8 * 0.43 
+							if dist <= dynamicThreshold or dist <= 9 then
+								shouldParry = true
+							end
+						end
+					elseif dist <= 12 and ballSpeed > 1 then
+						shouldParry = true
+					end
+					
+					if shouldParry and Config.CooldownProtect then
+						pcall(function()
+							local uiGrad = LocalPlayer.PlayerGui.Hotbar.Block.UIGradient
+							if uiGrad.Offset.Y < 0.4 then
+								ReplicatedStorage.Remotes.AbilityButtonPress:Fire()
+								shouldParry = false
+							end
+						end)
+					end
+					
+					if shouldParry then
+						AttemptParry()
+						IgnoreParryList[debugId] = true
+						task.spawn(function()
+							ball:GetAttributeChangedSignal("target"):Wait()
+							IgnoreParryList[debugId] = nil
+						end)
+					end
+				end
+			end
+		end
+	end
+end)
