@@ -785,3 +785,8 @@ end)
 library:Keybind("P")
 
 print("Kittylol Hub loaded - Nhan P de an/hien UI")
+
+
+library:Keybind("M")
+print("Kittylol Hub loaded - Nhan M de an/hien UI")
+
