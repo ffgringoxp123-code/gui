@@ -1,7 +1,8 @@
 --[[
-    Skin Changer Sakura Hub - Custom UI
+    Skin Changer Sakura Hub - UI Dọc
     Theme: Viền hồng - Chữ hồng - Nền trong suốt
-    Kích thước: Nhỏ gọn hơn
+    Hình chữ nhật dọc, vừa khít với nội dung
+    Gộp Model + Animation + FX vào 1 ô nhập
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -151,49 +152,42 @@ getgenv().changeSwordFX = true
 getgenv().swordModel = ""
 getgenv().swordAnimations = ""
 getgenv().swordFX = ""
-getgenv().AutoVote = false
 
 ----------[ UI CONSTRUCTION ]----------
 
--- Color scheme
 local COLORS = {
     Pink = Color3.fromRGB(255, 150, 200),
     LightPink = Color3.fromRGB(255, 180, 215),
     DarkPink = Color3.fromRGB(200, 100, 150),
     White = Color3.fromRGB(255, 255, 255),
-    TransparentBg = Color3.fromRGB(0, 0, 0)
 }
 
--- Tạo ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SakuraSkinChanger"
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Tạo MainFrame (bo góc, trong suốt)
+-- MainFrame - Dọc, vừa khít nội dung
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 260, 0, 340)
-MainFrame.Position = UDim2.new(0.5, -130, 0.5, -170)
+MainFrame.Size = UDim2.new(0, 160, 0, 155)
+MainFrame.Position = UDim2.new(0.5, -80, 0.5, -77)
 MainFrame.BackgroundTransparency = 1
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
 
--- Bo góc
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 14)
+MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
--- Viền hồng đậm
 local Stroke = Instance.new("UIStroke")
 Stroke.Color = COLORS.Pink
 Stroke.Thickness = 2
 Stroke.Transparency = 0
 Stroke.Parent = MainFrame
 
--- Background mờ trong suốt
 local Background = Instance.new("Frame")
 Background.Name = "Background"
 Background.Size = UDim2.new(1, 0, 1, 0)
@@ -204,10 +198,9 @@ Background.ZIndex = 0
 Background.Parent = MainFrame
 
 local BgCorner = Instance.new("UICorner")
-BgCorner.CornerRadius = UDim.new(0, 14)
+BgCorner.CornerRadius = UDim.new(0, 10)
 BgCorner.Parent = Background
 
--- Glass effect overlay
 local GlassOverlay = Instance.new("Frame")
 GlassOverlay.Name = "GlassOverlay"
 GlassOverlay.Size = UDim2.new(1, 0, 1, 0)
@@ -218,94 +211,89 @@ GlassOverlay.ZIndex = 1
 GlassOverlay.Parent = MainFrame
 
 local GlassCorner = Instance.new("UICorner")
-GlassCorner.CornerRadius = UDim.new(0, 14)
+GlassCorner.CornerRadius = UDim.new(0, 10)
 GlassCorner.Parent = GlassOverlay
 
--- Header / Title Bar
+-- Header
 local HeaderFrame = Instance.new("Frame")
 HeaderFrame.Name = "HeaderFrame"
-HeaderFrame.Size = UDim2.new(1, 0, 0, 42)
+HeaderFrame.Size = UDim2.new(1, 0, 0, 32)
 HeaderFrame.BackgroundTransparency = 1
 HeaderFrame.BorderSizePixel = 0
 HeaderFrame.ZIndex = 2
 HeaderFrame.Parent = MainFrame
 
--- Title Label
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(1, -45, 1, 0)
-TitleLabel.Position = UDim2.new(0, 12, 0, 0)
+TitleLabel.Size = UDim2.new(1, -30, 1, 0)
+TitleLabel.Position = UDim2.new(0, 8, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Skin Changer Sakura Hub"
+TitleLabel.Text = "Sakura"
 TitleLabel.TextColor3 = COLORS.Pink
-TitleLabel.TextSize = 15
+TitleLabel.TextSize = 13
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.ZIndex = 3
 TitleLabel.Parent = HeaderFrame
 
--- Toggle / Arrow Button
-local ToggleBtn = Instance.new("ImageButton")
-ToggleBtn.Name = "ToggleBtn"
-ToggleBtn.Size = UDim2.new(0, 26, 0, 26)
-ToggleBtn.Position = UDim2.new(1, -34, 0, 8)
-ToggleBtn.BackgroundTransparency = 0.8
-ToggleBtn.BackgroundColor3 = COLORS.DarkPink
-ToggleBtn.BorderSizePixel = 0
-ToggleBtn.Image = "rbxassetid://3926305904" -- Arrow down icon
-ToggleBtn.ImageColor3 = COLORS.Pink
-ToggleBtn.ZIndex = 3
-ToggleBtn.Parent = HeaderFrame
+local mToggleBtn = Instance.new("ImageButton")
+mToggleBtn.Name = "ToggleBtn"
+mToggleBtn.Size = UDim2.new(0, 18, 0, 18)
+mToggleBtn.Position = UDim2.new(1, -24, 0, 7)
+mToggleBtn.BackgroundTransparency = 0.8
+mToggleBtn.BackgroundColor3 = COLORS.DarkPink
+mToggleBtn.BorderSizePixel = 0
+mToggleBtn.Image = "rbxassetid://3926305904"
+mToggleBtn.ImageColor3 = COLORS.Pink
+mToggleBtn.ZIndex = 3
+mToggleBtn.Parent = HeaderFrame
 
-local BtnCorner = Instance.new("UICorner")
-BtnCorner.CornerRadius = UDim.new(0, 7)
-BtnCorner.Parent = ToggleBtn
+local mBtnCorner = Instance.new("UICorner")
+mBtnCorner.CornerRadius = UDim.new(0, 5)
+mBtnCorner.Parent = mToggleBtn
 
--- Separator line
 local Separator = Instance.new("Frame")
 Separator.Name = "Separator"
-Separator.Size = UDim2.new(1, -24, 0, 1)
-Separator.Position = UDim2.new(0, 12, 0, 42)
+Separator.Size = UDim2.new(1, -16, 0, 1)
+Separator.Position = UDim2.new(0, 8, 0, 32)
 Separator.BackgroundColor3 = COLORS.Pink
 Separator.BackgroundTransparency = 0.4
 Separator.BorderSizePixel = 0
 Separator.ZIndex = 3
 Separator.Parent = MainFrame
 
--- Content Frame
+-- Content
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
-ContentFrame.Size = UDim2.new(1, -16, 1, -55)
-ContentFrame.Position = UDim2.new(0, 8, 0, 48)
+ContentFrame.Size = UDim2.new(1, -10, 1, -40)
+ContentFrame.Position = UDim2.new(0, 5, 0, 36)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.ClipsDescendants = true
 ContentFrame.ZIndex = 2
 ContentFrame.Parent = MainFrame
 
--- ScrollingFrame
 local ScrollingFrame = Instance.new("ScrollingFrame")
 ScrollingFrame.Name = "ScrollingFrame"
 ScrollingFrame.Size = UDim2.new(1, 0, 1, 0)
 ScrollingFrame.BackgroundTransparency = 1
-ScrollingFrame.ScrollBarThickness = 3
+ScrollingFrame.ScrollBarThickness = 0
 ScrollingFrame.BorderSizePixel = 0
 ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 ScrollingFrame.ScrollBarImageColor3 = COLORS.Pink
 ScrollingFrame.ZIndex = 3
 ScrollingFrame.Parent = ContentFrame
 
--- UI List Layout
 local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Padding = UDim.new(0, 6)
+UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Parent = ScrollingFrame
 
--- Hàm tạo Toggle (phiên bản hồng)
+----------[ UI FUNCTIONS ]----------
+
 local function CreateToggle(parent, title, desc, default, callback)
-    local toggleY = 48
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -6, 0, toggleY)
+    frame.Size = UDim2.new(1, -4, 0, 40)
     frame.BackgroundTransparency = 0.65
     frame.BackgroundColor3 = COLORS.DarkPink
     frame.BorderSizePixel = 0
@@ -313,7 +301,7 @@ local function CreateToggle(parent, title, desc, default, callback)
     frame.Parent = parent
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
+    corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = frame
 
     local frameStroke = Instance.new("UIStroke")
@@ -323,24 +311,24 @@ local function CreateToggle(parent, title, desc, default, callback)
     frameStroke.Parent = frame
 
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -52, 0, 20)
-    titleLbl.Position = UDim2.new(0, 8, 0, 3)
+    titleLbl.Size = UDim2.new(1, -44, 0, 17)
+    titleLbl.Position = UDim2.new(0, 6, 0, 2)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = title
     titleLbl.TextColor3 = COLORS.Pink
-    titleLbl.TextSize = 13
+    titleLbl.TextSize = 11
     titleLbl.Font = Enum.Font.GothamSemibold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
     titleLbl.ZIndex = 4
     titleLbl.Parent = frame
 
     local descLbl = Instance.new("TextLabel")
-    descLbl.Size = UDim2.new(1, -52, 0, 16)
-    descLbl.Position = UDim2.new(0, 8, 0, 24)
+    descLbl.Size = UDim2.new(1, -44, 0, 13)
+    descLbl.Position = UDim2.new(0, 6, 0, 21)
     descLbl.BackgroundTransparency = 1
     descLbl.Text = desc
     descLbl.TextColor3 = COLORS.LightPink
-    descLbl.TextSize = 11
+    descLbl.TextSize = 9
     descLbl.Font = Enum.Font.Gotham
     descLbl.TextXAlignment = Enum.TextXAlignment.Left
     descLbl.ZIndex = 4
@@ -348,8 +336,8 @@ local function CreateToggle(parent, title, desc, default, callback)
 
     local toggleBtn = Instance.new("ImageButton")
     toggleBtn.Name = "ToggleBtn"
-    toggleBtn.Size = UDim2.new(0, 36, 0, 20)
-    toggleBtn.Position = UDim2.new(1, -44, 0, 14)
+    toggleBtn.Size = UDim2.new(0, 30, 0, 16)
+    toggleBtn.Position = UDim2.new(1, -36, 0, 12)
     toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 30, 50)
     toggleBtn.BorderSizePixel = 0
     toggleBtn.ClipsDescendants = true
@@ -357,21 +345,20 @@ local function CreateToggle(parent, title, desc, default, callback)
     toggleBtn.Parent = frame
 
     local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 10)
+    toggleCorner.CornerRadius = UDim.new(0, 8)
     toggleCorner.Parent = toggleBtn
 
     local toggleCircle = Instance.new("Frame")
     toggleCircle.Name = "Circle"
-    toggleCircle.Size = UDim2.new(0, 16, 0, 16)
+    toggleCircle.Size = UDim2.new(0, 12, 0, 12)
     toggleCircle.Position = UDim2.new(0, 2, 0, 2)
     toggleCircle.BackgroundColor3 = COLORS.Pink
     toggleCircle.BorderSizePixel = 0
     toggleCircle.ZIndex = 5
 
     local circleCorner = Instance.new("UICorner")
-    circleCorner.CornerRadius = UDim.new(0, 8)
+    circleCorner.CornerRadius = UDim.new(0, 6)
     circleCorner.Parent = toggleCircle
-
     toggleCircle.Parent = toggleBtn
 
     local toggled = default
@@ -380,7 +367,7 @@ local function CreateToggle(parent, title, desc, default, callback)
         if toggled then
             toggleBtn.BackgroundColor3 = COLORS.Pink
             toggleCircle.BackgroundColor3 = COLORS.White
-            toggleCircle:TweenPosition(UDim2.new(0, 18, 0, 2), "Out", "Quad", 0.15, true)
+            toggleCircle:TweenPosition(UDim2.new(0, 16, 0, 2), "Out", "Quad", 0.15, true)
         else
             toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 30, 50)
             toggleCircle.BackgroundColor3 = COLORS.Pink
@@ -399,11 +386,9 @@ local function CreateToggle(parent, title, desc, default, callback)
     return frame
 end
 
--- Hàm tạo Input (phiên bản hồng)
 local function CreateInput(parent, title, placeholder, default, callback)
-    local inputY = 68
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -6, 0, inputY)
+    frame.Size = UDim2.new(1, -4, 0, 60)
     frame.BackgroundTransparency = 0.65
     frame.BackgroundColor3 = COLORS.DarkPink
     frame.BorderSizePixel = 0
@@ -411,7 +396,7 @@ local function CreateInput(parent, title, placeholder, default, callback)
     frame.Parent = parent
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
+    corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = frame
 
     local frameStroke = Instance.new("UIStroke")
@@ -421,20 +406,20 @@ local function CreateInput(parent, title, placeholder, default, callback)
     frameStroke.Parent = frame
 
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -16, 0, 18)
-    titleLbl.Position = UDim2.new(0, 8, 0, 4)
+    titleLbl.Size = UDim2.new(1, -12, 0, 15)
+    titleLbl.Position = UDim2.new(0, 6, 0, 3)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = title
     titleLbl.TextColor3 = COLORS.Pink
-    titleLbl.TextSize = 13
+    titleLbl.TextSize = 11
     titleLbl.Font = Enum.Font.GothamSemibold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
     titleLbl.ZIndex = 4
     titleLbl.Parent = frame
 
     local textBox = Instance.new("TextBox")
-    textBox.Size = UDim2.new(1, -16, 0, 30)
-    textBox.Position = UDim2.new(0, 8, 0, 28)
+    textBox.Size = UDim2.new(1, -12, 0, 28)
+    textBox.Position = UDim2.new(0, 6, 0, 22)
     textBox.BackgroundTransparency = 0.5
     textBox.BackgroundColor3 = Color3.fromRGB(15, 8, 30)
     textBox.BorderSizePixel = 0
@@ -442,14 +427,14 @@ local function CreateInput(parent, title, placeholder, default, callback)
     textBox.PlaceholderText = placeholder
     textBox.TextColor3 = COLORS.White
     textBox.PlaceholderColor3 = COLORS.DarkPink
-    textBox.TextSize = 13
+    textBox.TextSize = 11
     textBox.Font = Enum.Font.Gotham
     textBox.ClearTextOnFocus = false
     textBox.ZIndex = 4
     textBox.Parent = frame
 
     local inputCorner = Instance.new("UICorner")
-    inputCorner.CornerRadius = UDim.new(0, 7)
+    inputCorner.CornerRadius = UDim.new(0, 5)
     inputCorner.Parent = textBox
 
     local inputStroke = Instance.new("UIStroke")
@@ -471,122 +456,63 @@ local function CreateInput(parent, title, placeholder, default, callback)
     return frame
 end
 
-----------[ BUILD UI ELEMENTS ]----------
+----------[ BUILD UI ]----------
 
--- Main Toggle Skin Changer
-CreateToggle(ScrollingFrame, "Skin Changer", "Enable skin changer", false, function(value)
+CreateToggle(ScrollingFrame, "Skin Changer", "Enable", false, function(value)
     getgenv().skinChangerEnabled = value
-    if value then
-        getgenv().updateSword()
-    end
+    if value then getgenv().updateSword() end
 end)
 
--- Change Sword Model
-CreateToggle(ScrollingFrame, "Change Sword Model", "Overwrite sword model", true, function(value)
-    getgenv().changeSwordModel = value
-    if getgenv().skinChangerEnabled then
-        getgenv().updateSword()
-    end
-end)
-
-CreateInput(ScrollingFrame, "Sword Model Name", "Enter model name...", "", function(text)
+CreateInput(ScrollingFrame, "Sword Name", "Name...", "", function(text)
     getgenv().swordModel = text
-    if getgenv().skinChangerEnabled and getgenv().changeSwordModel then
-        getgenv().updateSword()
-    end
-end)
-
--- Change Sword Animation
-CreateToggle(ScrollingFrame, "Change Animations", "Overwrite sword animation", true, function(value)
-    getgenv().changeSwordAnimation = value
-    if getgenv().skinChangerEnabled then
-        getgenv().updateSword()
-    end
-end)
-
-CreateInput(ScrollingFrame, "Animation Name", "Enter anim name...", "", function(text)
     getgenv().swordAnimations = text
-    if getgenv().skinChangerEnabled and getgenv().changeSwordAnimation then
-        getgenv().updateSword()
-    end
-end)
-
--- Change Sword FX
-CreateToggle(ScrollingFrame, "Change Sword FX", "Overwrite sword effects", true, function(value)
-    getgenv().changeSwordFX = value
-    if getgenv().skinChangerEnabled then
-        getgenv().updateSword()
-    end
-end)
-
-CreateInput(ScrollingFrame, "Sword FX Name", "Enter FX name...", "", function(text)
     getgenv().swordFX = text
-    if getgenv().skinChangerEnabled and getgenv().changeSwordFX then
-        getgenv().updateSword()
-    end
+    if getgenv().skinChangerEnabled then getgenv().updateSword() end
 end)
 
--- Cập nhật CanvasSize
-local function updateCanvas()
+task.spawn(function()
     task.wait(0.1)
-    ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
-end
-updateCanvas()
+    ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 6)
+end)
 
-----------[ TOGGLE MINIMIZE ]----------
+----------[ MINIMIZE ]----------
 
 local isMinimized = false
 local originalSize = MainFrame.Size
 
 local function ToggleMinimize()
     isMinimized = not isMinimized
-
     if isMinimized then
         ContentFrame.Visible = false
         Separator.Visible = false
-
-        local targetSize = UDim2.new(0, 260, 0, 42)
-        local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-        local sizeTween = TweenService:Create(MainFrame, tweenInfo, { Size = targetSize })
-        sizeTween:Play()
-
-        ToggleBtn.Image = "rbxassetid://3926307971" -- Arrow up
-        MainCorner.CornerRadius = UDim.new(0, 21)
+        local ts = TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 160, 0, 32) })
+        ts:Play()
+        mToggleBtn.Image = "rbxassetid://3926307971"
+        MainCorner.CornerRadius = UDim.new(0, 16)
     else
         ContentFrame.Visible = true
         Separator.Visible = true
-
-        local targetSize = originalSize
-        local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-        local sizeTween = TweenService:Create(MainFrame, tweenInfo, { Size = targetSize })
-        sizeTween:Play()
-
-        ToggleBtn.Image = "rbxassetid://3926305904" -- Arrow down
-        MainCorner.CornerRadius = UDim.new(0, 14)
+        local ts = TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = originalSize })
+        ts:Play()
+        mToggleBtn.Image = "rbxassetid://3926305904"
+        MainCorner.CornerRadius = UDim.new(0, 10)
     end
 end
 
-ToggleBtn.MouseButton1Click:Connect(ToggleMinimize)
+mToggleBtn.MouseButton1Click:Connect(ToggleMinimize)
 
-----------[ DRAG SCRIPT ]----------
+----------[ DRAG ]----------
 
 local dragging = false
-local dragInput
-local dragStart
-local startPos
+local dragInput, dragStart, startPos
 
 HeaderFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
-
         input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
         end)
     end
 end)
@@ -600,32 +526,26 @@ end)
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
 
-----------[ NOTIFY HỒNG ]----------
+----------[ NOTIFY ]----------
 
 local function SakuraNotify(title, content, duration)
     duration = duration or 3
-
     local notifyFrame = Instance.new("Frame")
-    notifyFrame.Size = UDim2.new(0, 240, 0, 44)
-    notifyFrame.Position = UDim2.new(0.5, -120, 0, -60)
+    notifyFrame.Size = UDim2.new(0, 160, 0, 36)
+    notifyFrame.Position = UDim2.new(0.5, -80, 0, -60)
     notifyFrame.BackgroundTransparency = 0.2
     notifyFrame.BackgroundColor3 = Color3.fromRGB(10, 5, 20)
     notifyFrame.BorderSizePixel = 0
     notifyFrame.ClipsDescendants = true
-    notifyFrame.ZIndex = 10
+    notifyFrame.ZIndex = 20
     notifyFrame.Parent = ScreenGui
 
     local notifyCorner = Instance.new("UICorner")
-    notifyCorner.CornerRadius = UDim.new(0, 10)
+    notifyCorner.CornerRadius = UDim.new(0, 8)
     notifyCorner.Parent = notifyFrame
 
     local notifyStroke = Instance.new("UIStroke")
@@ -635,76 +555,44 @@ local function SakuraNotify(title, content, duration)
     notifyStroke.Parent = notifyFrame
 
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -16, 0, 18)
-    titleLbl.Position = UDim2.new(0, 8, 0, 3)
+    titleLbl.Size = UDim2.new(1, -12, 0, 14)
+    titleLbl.Position = UDim2.new(0, 6, 0, 2)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = title
     titleLbl.TextColor3 = COLORS.Pink
-    titleLbl.TextSize = 13
+    titleLbl.TextSize = 11
     titleLbl.Font = Enum.Font.GothamBold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    titleLbl.ZIndex = 11
+    titleLbl.ZIndex = 21
     titleLbl.Parent = notifyFrame
 
     local contentLbl = Instance.new("TextLabel")
-    contentLbl.Size = UDim2.new(1, -16, 0, 16)
-    contentLbl.Position = UDim2.new(0, 8, 0, 22)
+    contentLbl.Size = UDim2.new(1, -12, 0, 14)
+    contentLbl.Position = UDim2.new(0, 6, 0, 17)
     contentLbl.BackgroundTransparency = 1
     contentLbl.Text = content
     contentLbl.TextColor3 = COLORS.LightPink
-    contentLbl.TextSize = 11
+    contentLbl.TextSize = 10
     contentLbl.Font = Enum.Font.Gotham
     contentLbl.TextXAlignment = Enum.TextXAlignment.Left
-    contentLbl.ZIndex = 11
+    contentLbl.ZIndex = 21
     contentLbl.Parent = notifyFrame
 
-    notifyFrame.Position = UDim2.new(0.5, -120, 0, -60)
-    local tweenIn = TweenService:Create(notifyFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        Position = UDim2.new(0.5, -120, 0, 15)
-    })
+    notifyFrame.Position = UDim2.new(0.5, -80, 0, -60)
+    local tweenIn = TweenService:Create(notifyFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -80, 0, 10) })
     tweenIn:Play()
 
     task.wait(duration)
-
-    local tweenOut = TweenService:Create(notifyFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-        Position = UDim2.new(0.5, -120, 0, -60)
-    })
+    local tweenOut = TweenService:Create(notifyFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0.5, -80, 0, -60) })
     tweenOut:Play()
-    tweenOut.Completed:Connect(function()
-        notifyFrame:Destroy()
-    end)
+    tweenOut.Completed:Connect(function() notifyFrame:Destroy() end)
 end
 
 getgenv().SakuraNotify = SakuraNotify
 
--- Notify cho main toggle
-local lastNotifyState = false
-
-task.spawn(function()
-    task.wait(0.5)
-    local mainToggleFrame = ScrollingFrame:FindFirstChildWhichIsA("Frame")
-    if mainToggleFrame then
-        local btn = mainToggleFrame:FindFirstChild("ToggleBtn", true)
-        if btn and btn:IsA("ImageButton") then
-            btn.MouseButton1Click:Connect(function()
-                task.wait(0.05)
-                if getgenv().skinChangerEnabled and not lastNotifyState then
-                    lastNotifyState = true
-                    SakuraNotify("Skin Changer", "Enabled ♡")
-                elseif not getgenv().skinChangerEnabled and lastNotifyState then
-                    lastNotifyState = false
-                    SakuraNotify("Skin Changer", "Disabled")
-                end
-            end)
-        end
-    end
-end)
-
--- Fade in khi mở
-MainFrame.Position = UDim2.new(0.5, -130, 0, -300)
-local openTween = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-    Position = UDim2.new(0.5, -130, 0.5, -170)
-})
+-- Fade in
+MainFrame.Position = UDim2.new(0.5, -80, 0, -300)
+local openTween = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -80, 0.5, -77) })
 openTween:Play()
 
-SakuraNotify("Skin Changer Sakura Hub", "Loaded successfully! ♡", 3)
+SakuraNotify("Skin Changer", "Loaded ♡", 3)
