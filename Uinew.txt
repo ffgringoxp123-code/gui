@@ -2304,4 +2304,4 @@ end
 --[[
     Return the library
 ]]
-return SakuraUI
+return Library
